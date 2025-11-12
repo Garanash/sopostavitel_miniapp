@@ -1,0 +1,77 @@
+.files-page {
+  animation: fadeIn 0.3s;
+}
+
+.files-count {
+  color: var(--tg-theme-hint-color, #666666);
+  margin-top: 8px;
+}
+
+.files-list {
+  margin-top: 16px;
+}
+
+.file-card {
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.file-card:hover {
+  transform: translateY(-2px);
+}
+
+.file-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.file-name {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--tg-theme-text-color, #000000);
+}
+
+.file-meta {
+  font-size: 14px;
+  color: var(--tg-theme-hint-color, #666666);
+}
+
+.file-card-body {
+  margin-top: 12px;
+}
+
+.matches-info {
+  margin-bottom: 12px;
+  font-size: 16px;
+}
+
+.file-details {
+  animation: fadeIn 0.3s;
+}
+
+.match-item-name {
+  font-size: 14px;
+  color: var(--tg-theme-hint-color, #666666);
+  margin-top: 4px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px;
+  color: var(--tg-theme-hint-color, #999999);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+

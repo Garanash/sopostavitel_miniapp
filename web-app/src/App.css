@@ -1,0 +1,13 @@
+.app {
+  min-height: 100vh;
+  padding-bottom: 40px;
+}
+
+.app-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 24px;
+  text-align: center;
+  color: var(--tg-theme-text-color, #000000);
+}
+
