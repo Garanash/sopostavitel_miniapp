@@ -359,9 +359,44 @@ class ProductMappingSearchResponse(BaseModel):
     matched_fields: List[str]
 
 def calculate_similarity(text1: str, text2: str) -> float:
-    """Вычисляет процент совпадения между двумя строками"""
+    """Вычисляет процент совпадения между двумя строками на основе совпадения слов"""
     if not text1 or not text2:
         return 0.0
+    
+    # Нормализуем тексты: приводим к нижнему регистру и разбиваем на слова
+    import re
+    words1 = set(re.findall(r'\w+', text1.lower()))
+    words2 = set(re.findall(r'\w+', text2.lower()))
+    
+    if not words1 or not words2:
+        return 0.0
+    
+    # Находим точные совпадения слов
+    exact_matches = words1.intersection(words2)
+    
+    # Если есть точные совпадения, считаем процент на их основе
+    if exact_matches:
+        # Процент = (количество совпавших слов / количество слов в запросе) * 100
+        # Но также учитываем, сколько слов из текста совпало
+        match_ratio = len(exact_matches) / len(words1)
+        # Дополнительный бонус, если все слова запроса найдены
+        if len(exact_matches) == len(words1):
+            match_ratio = 1.0
+        return match_ratio * 100
+    
+    # Если нет точных совпадений, используем частичное совпадение
+    # Проверяем, содержит ли текст2 слова из text1 (частичное совпадение)
+    partial_score = 0.0
+    for word1 in words1:
+        for word2 in words2:
+            if word1 in word2 or word2 in word1:
+                partial_score += 0.5  # Частичное совпадение дает 50% от полного
+                break
+    
+    if partial_score > 0:
+        return (partial_score / len(words1)) * 100
+    
+    # Если нет даже частичных совпадений, используем SequenceMatcher как fallback
     return SequenceMatcher(None, text1.lower(), text2.lower()).ratio() * 100
 
 @app.post("/api/mappings", response_model=ProductMappingResponse)
@@ -413,12 +448,11 @@ async def search_mappings(
     limit: int = Query(20, description="Максимальное количество результатов"),
     db: AsyncSession = Depends(get_db)
 ):
-    """Поиск строк с процентом совпадения"""
+    """Поиск строк с процентом совпадения на основе совпадения слов"""
     result = await db.execute(select(ProductMapping))
     all_mappings = result.scalars().all()
     
     search_results = []
-    query_lower = query.lower()
     
     for mapping in all_mappings:
         scores = []
@@ -516,70 +550,6 @@ async def delete_mapping(mapping_id: int, db: AsyncSession = Depends(get_db)):
     await db.delete(mapping)
     await db.commit()
     return {"message": "Mapping deleted"}
-
-@app.get("/api/mappings/search", response_model=List[ProductMappingSearchResponse])
-async def search_mappings(
-    query: str = Query(..., description="Поисковый запрос"),
-    min_score: float = Query(50.0, description="Минимальный процент совпадения"),
-    limit: int = Query(20, description="Максимальное количество результатов"),
-    db: AsyncSession = Depends(get_db)
-):
-    """Поиск строк с процентом совпадения"""
-    result = await db.execute(select(ProductMapping))
-    all_mappings = result.scalars().all()
-    
-    search_results = []
-    query_lower = query.lower()
-    
-    for mapping in all_mappings:
-        scores = []
-        matched_fields = []
-        
-        # Проверяем все поля
-        fields_to_check = {
-            'code_1c': mapping.code_1c,
-            'bortlanger': mapping.bortlanger,
-            'epiroc': mapping.epiroc,
-            'almazgeobur': mapping.almazgeobur,
-        }
-        
-        # Проверяем конкурентов
-        if mapping.competitors:
-            for comp_name, comp_value in mapping.competitors.items():
-                if comp_value:
-                    fields_to_check[comp_name] = comp_value
-        
-        for field_name, field_value in fields_to_check.items():
-            if field_value:
-                score = calculate_similarity(query, str(field_value))
-                if score > 0:
-                    scores.append(score)
-                    if score >= min_score:
-                        matched_fields.append(field_name)
-        
-        if scores:
-            max_score = max(scores)
-            if max_score >= min_score:
-                search_results.append({
-                    'mapping': mapping,
-                    'match_score': round(max_score, 2),
-                    'matched_fields': matched_fields
-                })
-    
-    # Сортируем по проценту совпадения (по убыванию)
-    search_results.sort(key=lambda x: x['match_score'], reverse=True)
-    
-    # Ограничиваем количество результатов
-    search_results = search_results[:limit]
-    
-    return [
-        ProductMappingSearchResponse(
-            mapping=ProductMappingResponse.model_validate(item['mapping']),
-            match_score=item['match_score'],
-            matched_fields=item['matched_fields']
-        )
-        for item in search_results
-    ]
 
 @app.post("/api/mappings/upload")
 async def upload_mapping_file(
