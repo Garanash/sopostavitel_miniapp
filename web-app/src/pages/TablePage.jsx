@@ -12,6 +12,12 @@ function TablePage() {
   const [error, setError] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
+  
+  // Пагинация
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalItems, setTotalItems] = useState(0)
+  const itemsPerPage = 20
+  
   const [formData, setFormData] = useState({
     code_1c: '',
     bortlanger: '',
@@ -22,16 +28,49 @@ function TablePage() {
   const [newCompetitor, setNewCompetitor] = useState({ name: '', value: '' })
 
   useEffect(() => {
+    console.log('TablePage mounted, loading mappings...')
     loadMappings()
-  }, [])
+  }, [currentPage])
 
   const loadMappings = async () => {
     try {
       setLoading(true)
-      const response = await axios.get('/api/mappings')
-      setMappings(response.data)
+      setError(null)
+      const skip = (currentPage - 1) * itemsPerPage
+      const response = await axios.get('/api/mappings', {
+        params: {
+          skip: skip,
+          limit: itemsPerPage
+        },
+        timeout: 30000,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      // Новая структура ответа: { items, total, skip, limit }
+      if (response.data.items) {
+        setMappings(response.data.items)
+        setTotalItems(response.data.total || 0)
+        console.log(`Загружено записей: ${response.data.items.length} из ${response.data.total}`)
+      } else {
+        // Fallback для старого формата
+        setMappings(response.data)
+        setTotalItems(response.data.length)
+      }
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Ошибка при загрузке таблицы')
+      console.error('Ошибка загрузки:', err)
+      let errorMessage = 'Ошибка при загрузке таблицы'
+      if (err.response) {
+        errorMessage = err.response.data?.detail || err.response.statusText || errorMessage
+      } else if (err.request) {
+        errorMessage = 'Нет ответа от сервера. Проверьте подключение.'
+      } else {
+        errorMessage = err.message || errorMessage
+      }
+      setError(errorMessage)
+      setMappings([])
+      setTotalItems(0)
     } finally {
       setLoading(false)
     }
@@ -51,9 +90,14 @@ function TablePage() {
           query: searchQuery,
           min_score: minScore,
           limit: 50
+        },
+        timeout: 30000,
+        headers: {
+          'Content-Type': 'application/json'
         }
       })
       setSearchResults(response.data)
+      console.log('Найдено результатов:', response.data.length)
     } catch (err) {
       let errorMessage = 'Ошибка при поиске'
       if (err.response?.data) {
@@ -154,7 +198,12 @@ function TablePage() {
     
     try {
       await axios.delete(`/api/mappings/${id}`)
-      await loadMappings()
+      // Если удалили последний элемент на странице и страница не первая, переходим на предыдущую
+      if (mappings.length === 1 && currentPage > 1) {
+        setCurrentPage(currentPage - 1)
+      } else {
+        await loadMappings()
+      }
       if (searchResults.length > 0) {
         handleSearch()
       }
@@ -162,6 +211,14 @@ function TablePage() {
       setError(err.response?.data?.detail || err.message || 'Ошибка при удалении')
     }
   }
+  
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage)
+    setSearchQuery('') // Сбрасываем поиск при смене страницы
+    setSearchResults([])
+  }
+  
+  const totalPages = Math.ceil(totalItems / itemsPerPage)
 
   const displayData = searchQuery.trim() ? searchResults : mappings.map(m => ({
     mapping: m,
@@ -217,7 +274,16 @@ function TablePage() {
         </div>
       </div>
 
-      {error && <div className="error">{error}</div>}
+      {error && <div className="error">❌ {error}</div>}
+      {loading && <div className="loading">⏳ Загрузка данных...</div>}
+      {!loading && !error && mappings.length === 0 && (
+        <div className="info">ℹ️ Таблица пуста. Загрузите данные через файл или добавьте строку вручную.</div>
+      )}
+      {!loading && !error && !searchQuery.trim() && totalItems > 0 && (
+        <div className="info">
+          ✅ Показано {mappings.length} из {totalItems} записей (страница {currentPage} из {Math.ceil(totalItems / itemsPerPage)})
+        </div>
+      )}
 
       {showAddForm && (
         <div className="add-form">
@@ -371,6 +437,29 @@ function TablePage() {
           ) : (
             <p>Таблица пуста. Добавьте строки вручную или загрузите файл.</p>
           )}
+        </div>
+      )}
+
+      {/* Пагинация - показываем только если не идет поиск */}
+      {!loading && !error && !searchQuery.trim() && totalPages > 1 && (
+        <div className="pagination">
+          <button
+            className="pagination-btn"
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+          >
+            ← Предыдущая
+          </button>
+          <span className="pagination-info">
+            Страница {currentPage} из {totalPages}
+          </span>
+          <button
+            className="pagination-btn"
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage >= totalPages}
+          >
+            Следующая →
+          </button>
         </div>
       )}
     </div>

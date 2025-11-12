@@ -299,6 +299,68 @@
   color: var(--tg-theme-hint-color, #999999);
 }
 
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 16px;
+}
+
+.pagination-btn {
+  padding: 10px 20px;
+  background: var(--tg-theme-button-color, #3390ec);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: opacity 0.2s;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-info {
+  font-size: 14px;
+  color: var(--tg-theme-text-color, #000);
+  font-weight: 500;
+}
+
+.info {
+  padding: 12px;
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: var(--tg-theme-text-color, #000);
+}
+
+.loading {
+  text-align: center;
+  padding: 20px;
+  color: var(--tg-theme-hint-color, #999999);
+  font-size: 16px;
+}
+
+.error {
+  padding: 12px;
+  background: #fee;
+  border: 1px solid #fcc;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  color: #c00;
+  font-size: 14px;
+}
+
 @media (max-width: 768px) {
   .search-input-group {
     flex-direction: column;

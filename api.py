@@ -379,15 +379,32 @@ async def create_mapping(mapping: ProductMappingCreate, db: AsyncSession = Depen
     await db.refresh(db_mapping)
     return db_mapping
 
-@app.get("/api/mappings", response_model=List[ProductMappingResponse])
+@app.get("/api/mappings")
 async def get_mappings(
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db)
 ):
-    """Получение всех строк таблицы"""
-    result = await db.execute(select(ProductMapping).offset(skip).limit(limit))
-    return result.scalars().all()
+    """Получение всех строк таблицы с пагинацией"""
+    # Получаем общее количество записей
+    count_result = await db.execute(select(func.count(ProductMapping.id)))
+    total = count_result.scalar()
+    
+    # Получаем данные с пагинацией
+    result = await db.execute(
+        select(ProductMapping)
+        .order_by(ProductMapping.id)
+        .offset(skip)
+        .limit(limit)
+    )
+    mappings = result.scalars().all()
+    
+    return {
+        "items": [ProductMappingResponse.model_validate(m) for m in mappings],
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    }
 
 @app.get("/api/mappings/search", response_model=List[ProductMappingSearchResponse])
 async def search_mappings(

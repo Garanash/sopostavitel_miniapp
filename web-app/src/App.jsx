@@ -13,6 +13,31 @@ const API_URL = import.meta.env.VITE_API_URL || ''
 axios.defaults.baseURL = API_URL
 axios.defaults.timeout = 30000
 
+// Interceptor для логирования запросов (только в dev)
+if (import.meta.env.DEV) {
+  axios.interceptors.request.use(
+    (config) => {
+      console.log('API Request:', config.method?.toUpperCase(), config.url)
+      return config
+    },
+    (error) => {
+      console.error('API Request Error:', error)
+      return Promise.reject(error)
+    }
+  )
+  
+  axios.interceptors.response.use(
+    (response) => {
+      console.log('API Response:', response.status, response.config.url)
+      return response
+    },
+    (error) => {
+      console.error('API Response Error:', error.response?.status, error.config?.url, error.message)
+      return Promise.reject(error)
+    }
+  )
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState('upload')
   const [userId, setUserId] = useState(null)
