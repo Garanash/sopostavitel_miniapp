@@ -95,6 +95,20 @@
   opacity: 0.9;
 }
 
+.btn-edit {
+  padding: 8px 16px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-edit:hover {
+  opacity: 0.9;
+}
+
 .btn-small {
   padding: 6px 12px;
   font-size: 12px;
@@ -112,24 +126,37 @@
   margin-bottom: 20px;
 }
 
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
 .form-row {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .form-row label {
-  min-width: 120px;
   font-weight: 500;
+  font-size: 14px;
+}
+
+.form-row label .required {
+  color: #ef4444;
 }
 
 .form-row input {
-  flex: 1;
   padding: 10px;
   border: 2px solid var(--tg-theme-hint-color, #e0e0e0);
   border-radius: 6px;
   font-size: 14px;
+}
+
+.form-row input:required {
+  border-color: var(--tg-theme-button-color, #3390ec);
 }
 
 .competitors-section {

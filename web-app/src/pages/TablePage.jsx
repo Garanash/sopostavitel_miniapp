@@ -12,6 +12,7 @@ function TablePage() {
   const [error, setError] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [editingId, setEditingId] = useState(null)
   
   // Пагинация
   const [currentPage, setCurrentPage] = useState(1)
@@ -19,13 +20,21 @@ function TablePage() {
   const itemsPerPage = 20
   
   const [formData, setFormData] = useState({
-    code_1c: '',
-    bortlanger: '',
-    epiroc: '',
-    almazgeobur: '',
-    competitors: {}
+    article_bl: '',
+    article_agb: '',
+    variant_1: '',
+    variant_2: '',
+    variant_3: '',
+    variant_4: '',
+    variant_5: '',
+    variant_6: '',
+    variant_7: '',
+    variant_8: '',
+    unit: '',
+    code: '',
+    nomenclature_agb: '',
+    packaging: ''
   })
-  const [newCompetitor, setNewCompetitor] = useState({ name: '', value: '' })
 
   useEffect(() => {
     console.log('TablePage mounted, loading mappings...')
@@ -48,13 +57,11 @@ function TablePage() {
         }
       })
       
-      // Новая структура ответа: { items, total, skip, limit }
       if (response.data.items) {
         setMappings(response.data.items)
         setTotalItems(response.data.total || 0)
         console.log(`Загружено записей: ${response.data.items.length} из ${response.data.total}`)
       } else {
-        // Fallback для старого формата
         setMappings(response.data)
         setTotalItems(response.data.length)
       }
@@ -156,41 +163,81 @@ function TablePage() {
     maxSize: 20 * 1024 * 1024,
   })
 
-  const handleAddCompetitor = () => {
-    if (newCompetitor.name && newCompetitor.value) {
-      setFormData({
-        ...formData,
-        competitors: {
-          ...formData.competitors,
-          [newCompetitor.name]: newCompetitor.value
-        }
-      })
-      setNewCompetitor({ name: '', value: '' })
-    }
-  }
-
-  const handleRemoveCompetitor = (name) => {
-    const newCompetitors = { ...formData.competitors }
-    delete newCompetitors[name]
-    setFormData({ ...formData, competitors: newCompetitors })
+  const resetForm = () => {
+    setFormData({
+      article_bl: '',
+      article_agb: '',
+      variant_1: '',
+      variant_2: '',
+      variant_3: '',
+      variant_4: '',
+      variant_5: '',
+      variant_6: '',
+      variant_7: '',
+      variant_8: '',
+      unit: '',
+      code: '',
+      nomenclature_agb: '',
+      packaging: ''
+    })
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    
+    // Валидация обязательных полей
+    const requiredFields = ['article_bl', 'article_agb', 'variant_1', 'variant_2', 'variant_3', 
+                           'variant_4', 'variant_5', 'variant_6', 'variant_7', 'variant_8', 
+                           'unit', 'code', 'nomenclature_agb', 'packaging']
+    const missingFields = requiredFields.filter(field => !formData[field] || formData[field].trim() === '')
+    
+    if (missingFields.length > 0) {
+      setError(`Заполните все обязательные поля: ${missingFields.join(', ')}`)
+      return
+    }
+    
     try {
-      await axios.post('/api/mappings', formData)
+      if (editingId) {
+        // Редактирование
+        await axios.put(`/api/mappings/${editingId}`, formData)
+        setEditingId(null)
+      } else {
+        // Создание
+        await axios.post('/api/mappings', formData)
+      }
       setShowAddForm(false)
-      setFormData({
-        code_1c: '',
-        bortlanger: '',
-        epiroc: '',
-        almazgeobur: '',
-        competitors: {}
-      })
+      resetForm()
       await loadMappings()
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Ошибка при создании строки')
+      setError(err.response?.data?.detail || err.message || 'Ошибка при сохранении')
     }
+  }
+
+  const handleEdit = (mapping) => {
+    setFormData({
+      article_bl: mapping.article_bl || '',
+      article_agb: mapping.article_agb || '',
+      variant_1: mapping.variant_1 || '',
+      variant_2: mapping.variant_2 || '',
+      variant_3: mapping.variant_3 || '',
+      variant_4: mapping.variant_4 || '',
+      variant_5: mapping.variant_5 || '',
+      variant_6: mapping.variant_6 || '',
+      variant_7: mapping.variant_7 || '',
+      variant_8: mapping.variant_8 || '',
+      unit: mapping.unit || '',
+      code: mapping.code || '',
+      nomenclature_agb: mapping.nomenclature_agb || '',
+      packaging: mapping.packaging || ''
+    })
+    setEditingId(mapping.id)
+    setShowAddForm(true)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setShowAddForm(false)
+    resetForm()
   }
 
   const handleDelete = async (id) => {
@@ -198,7 +245,6 @@ function TablePage() {
     
     try {
       await axios.delete(`/api/mappings/${id}`)
-      // Если удалили последний элемент на странице и страница не первая, переходим на предыдущую
       if (mappings.length === 1 && currentPage > 1) {
         setCurrentPage(currentPage - 1)
       } else {
@@ -214,7 +260,7 @@ function TablePage() {
   
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage)
-    setSearchQuery('') // Сбрасываем поиск при смене страницы
+    setSearchQuery('')
     setSearchResults([])
   }
   
@@ -225,18 +271,6 @@ function TablePage() {
     match_score: null,
     matched_fields: []
   }))
-
-  const getAllCompetitorNames = () => {
-    const names = new Set()
-    mappings.forEach(m => {
-      if (m.competitors) {
-        Object.keys(m.competitors).forEach(name => names.add(name))
-      }
-    })
-    return Array.from(names).sort()
-  }
-
-  const competitorNames = getAllCompetitorNames()
 
   return (
     <div className="table-page">
@@ -268,7 +302,16 @@ function TablePage() {
         </div>
 
         <div className="action-buttons">
-          <button className="btn-primary" onClick={() => setShowAddForm(!showAddForm)}>
+          <button className="btn-primary" onClick={() => {
+            if (showAddForm && !editingId) {
+              setShowAddForm(false)
+              resetForm()
+            } else if (!showAddForm) {
+              setShowAddForm(true)
+              setEditingId(null)
+              resetForm()
+            }
+          }}>
             ➕ Добавить строку
           </button>
         </div>
@@ -287,69 +330,142 @@ function TablePage() {
 
       {showAddForm && (
         <div className="add-form">
-          <h3>Добавить новую строку</h3>
+          <h3>{editingId ? 'Редактировать строку' : 'Добавить новую строку'}</h3>
           <form onSubmit={handleSubmit}>
-            <div className="form-row">
-              <label>Код 1С:</label>
-              <input
-                type="text"
-                value={formData.code_1c}
-                onChange={(e) => setFormData({ ...formData, code_1c: e.target.value })}
-              />
-            </div>
-            <div className="form-row">
-              <label>Bortlanger:</label>
-              <input
-                type="text"
-                value={formData.bortlanger}
-                onChange={(e) => setFormData({ ...formData, bortlanger: e.target.value })}
-              />
-            </div>
-            <div className="form-row">
-              <label>Epiroc:</label>
-              <input
-                type="text"
-                value={formData.epiroc}
-                onChange={(e) => setFormData({ ...formData, epiroc: e.target.value })}
-              />
-            </div>
-            <div className="form-row">
-              <label>Almazgeobur:</label>
-              <input
-                type="text"
-                value={formData.almazgeobur}
-                onChange={(e) => setFormData({ ...formData, almazgeobur: e.target.value })}
-              />
-            </div>
-            
-            <div className="competitors-section">
-              <h4>Конкуренты:</h4>
-              {Object.entries(formData.competitors).map(([name, value]) => (
-                <div key={name} className="competitor-item">
-                  <span>{name}: {value}</span>
-                  <button type="button" onClick={() => handleRemoveCompetitor(name)}>✕</button>
-                </div>
-              ))}
-              <div className="add-competitor">
+            <div className="form-grid">
+              <div className="form-row">
+                <label>Артикул BL <span className="required">*</span>:</label>
                 <input
                   type="text"
-                  placeholder="Название конкурента"
-                  value={newCompetitor.name}
-                  onChange={(e) => setNewCompetitor({ ...newCompetitor, name: e.target.value })}
+                  value={formData.article_bl}
+                  onChange={(e) => setFormData({ ...formData, article_bl: e.target.value })}
+                  required
                 />
+              </div>
+              <div className="form-row">
+                <label>Артикул АГБ <span className="required">*</span>:</label>
                 <input
                   type="text"
-                  placeholder="Значение"
-                  value={newCompetitor.value}
-                  onChange={(e) => setNewCompetitor({ ...newCompetitor, value: e.target.value })}
+                  value={formData.article_agb}
+                  onChange={(e) => setFormData({ ...formData, article_agb: e.target.value })}
+                  required
                 />
-                <button type="button" onClick={handleAddCompetitor}>Добавить</button>
+              </div>
+              <div className="form-row">
+                <label>Вариант подбора 1 <span className="required">*</span>:</label>
+                <input
+                  type="text"
+                  value={formData.variant_1}
+                  onChange={(e) => setFormData({ ...formData, variant_1: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-row">
+                <label>Вариант подбора 2 <span className="required">*</span>:</label>
+                <input
+                  type="text"
+                  value={formData.variant_2}
+                  onChange={(e) => setFormData({ ...formData, variant_2: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-row">
+                <label>Вариант подбора 3 <span className="required">*</span>:</label>
+                <input
+                  type="text"
+                  value={formData.variant_3}
+                  onChange={(e) => setFormData({ ...formData, variant_3: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-row">
+                <label>Вариант подбора 4 <span className="required">*</span>:</label>
+                <input
+                  type="text"
+                  value={formData.variant_4}
+                  onChange={(e) => setFormData({ ...formData, variant_4: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-row">
+                <label>Вариант подбора 5 <span className="required">*</span>:</label>
+                <input
+                  type="text"
+                  value={formData.variant_5}
+                  onChange={(e) => setFormData({ ...formData, variant_5: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-row">
+                <label>Вариант подбора 6 <span className="required">*</span>:</label>
+                <input
+                  type="text"
+                  value={formData.variant_6}
+                  onChange={(e) => setFormData({ ...formData, variant_6: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-row">
+                <label>Вариант подбора 7 <span className="required">*</span>:</label>
+                <input
+                  type="text"
+                  value={formData.variant_7}
+                  onChange={(e) => setFormData({ ...formData, variant_7: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-row">
+                <label>Вариант подбора 8 <span className="required">*</span>:</label>
+                <input
+                  type="text"
+                  value={formData.variant_8}
+                  onChange={(e) => setFormData({ ...formData, variant_8: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-row">
+                <label>Ед.изм. <span className="required">*</span>:</label>
+                <input
+                  type="text"
+                  value={formData.unit}
+                  onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-row">
+                <label>Код <span className="required">*</span>:</label>
+                <input
+                  type="text"
+                  value={formData.code}
+                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-row">
+                <label>Номенклатура АГБ <span className="required">*</span>:</label>
+                <input
+                  type="text"
+                  value={formData.nomenclature_agb}
+                  onChange={(e) => setFormData({ ...formData, nomenclature_agb: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-row">
+                <label>Фасовка для химии, кг. <span className="required">*</span>:</label>
+                <input
+                  type="text"
+                  value={formData.packaging}
+                  onChange={(e) => setFormData({ ...formData, packaging: e.target.value })}
+                  required
+                />
               </div>
             </div>
 
             <div className="form-actions">
-              <button type="submit" className="btn-primary">Сохранить</button>
-              <button type="button" onClick={() => setShowAddForm(false)}>Отмена</button>
+              <button type="submit" className="btn-primary">
+                {editingId ? 'Сохранить изменения' : 'Сохранить'}
+              </button>
+              <button type="button" onClick={handleCancelEdit}>Отмена</button>
             </div>
           </form>
         </div>
@@ -369,21 +485,26 @@ function TablePage() {
         </div>
       </div>
 
-      {loading && <div className="loading">Загрузка...</div>}
-
       {displayData.length > 0 && (
         <div className="table-container">
           <table className="mapping-table">
             <thead>
               <tr>
                 <th>ID</th>
-                <th>Код 1С</th>
-                <th>Bortlanger</th>
-                <th>Epiroc</th>
-                <th>Almazgeobur</th>
-                {competitorNames.map(name => (
-                  <th key={name}>{name}</th>
-                ))}
+                <th>Артикул BL</th>
+                <th>Артикул АГБ</th>
+                <th>Вариант подбора 1</th>
+                <th>Вариант подбора 2</th>
+                <th>Вариант подбора 3</th>
+                <th>Вариант подбора 4</th>
+                <th>Вариант подбора 5</th>
+                <th>Вариант подбора 6</th>
+                <th>Вариант подбора 7</th>
+                <th>Вариант подбора 8</th>
+                <th>Ед.изм.</th>
+                <th>Код</th>
+                <th>Номенклатура АГБ</th>
+                <th>Фасовка для химии, кг.</th>
                 {searchQuery.trim() && <th>Совпадение</th>}
                 <th>Действия</th>
               </tr>
@@ -395,13 +516,20 @@ function TablePage() {
                 return (
                   <tr key={m.id}>
                     <td>{m.id}</td>
-                    <td>{m.code_1c || '-'}</td>
-                    <td>{m.bortlanger || '-'}</td>
-                    <td>{m.epiroc || '-'}</td>
-                    <td>{m.almazgeobur || '-'}</td>
-                    {competitorNames.map(name => (
-                      <td key={name}>{m.competitors?.[name] || '-'}</td>
-                    ))}
+                    <td>{m.article_bl || '-'}</td>
+                    <td>{m.article_agb || '-'}</td>
+                    <td>{m.variant_1 || '-'}</td>
+                    <td>{m.variant_2 || '-'}</td>
+                    <td>{m.variant_3 || '-'}</td>
+                    <td>{m.variant_4 || '-'}</td>
+                    <td>{m.variant_5 || '-'}</td>
+                    <td>{m.variant_6 || '-'}</td>
+                    <td>{m.variant_7 || '-'}</td>
+                    <td>{m.variant_8 || '-'}</td>
+                    <td>{m.unit || '-'}</td>
+                    <td>{m.code || '-'}</td>
+                    <td>{m.nomenclature_agb || '-'}</td>
+                    <td>{m.packaging || '-'}</td>
                     {searchQuery.trim() && matchScore !== null && (
                       <td>
                         <span className={`match-score score-${Math.floor(matchScore / 25)}`}>
@@ -416,10 +544,17 @@ function TablePage() {
                     )}
                     <td>
                       <button
+                        className="btn-edit btn-small"
+                        onClick={() => handleEdit(m)}
+                        style={{ marginRight: '5px' }}
+                      >
+                        ✏️ Редактировать
+                      </button>
+                      <button
                         className="btn-danger btn-small"
                         onClick={() => handleDelete(m.id)}
                       >
-                        Удалить
+                        🗑️ Удалить
                       </button>
                     </td>
                   </tr>
@@ -440,7 +575,6 @@ function TablePage() {
         </div>
       )}
 
-      {/* Пагинация - показываем только если не идет поиск */}
       {!loading && !error && !searchQuery.trim() && totalPages > 1 && (
         <div className="pagination">
           <button
@@ -467,4 +601,3 @@ function TablePage() {
 }
 
 export default TablePage
-

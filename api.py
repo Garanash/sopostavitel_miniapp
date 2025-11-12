@@ -334,19 +334,54 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
 # ========== API для работы с таблицей сопоставления ==========
 
 class ProductMappingCreate(BaseModel):
+    # Старые поля (для совместимости)
     code_1c: Optional[str] = None
     bortlanger: Optional[str] = None
     epiroc: Optional[str] = None
     almazgeobur: Optional[str] = None
     competitors: Optional[dict] = None
+    
+    # Новые базовые поля
+    article_bl: Optional[str] = None  # артикул bl
+    article_agb: Optional[str] = None  # артикул агб
+    variant_1: Optional[str] = None  # вариант подбора 1
+    variant_2: Optional[str] = None  # вариант подбора 2
+    variant_3: Optional[str] = None  # вариант подбора 3
+    variant_4: Optional[str] = None  # вариант подбора 4
+    variant_5: Optional[str] = None  # вариант подбора 5
+    variant_6: Optional[str] = None  # вариант подбора 6
+    variant_7: Optional[str] = None  # вариант подбора 7
+    variant_8: Optional[str] = None  # вариант подбора 8
+    unit: Optional[str] = None  # ед.изм.
+    code: Optional[str] = None  # код
+    nomenclature_agb: Optional[str] = None  # номенклатура агб
+    packaging: Optional[str] = None  # фасовка для химии, кг.
 
 class ProductMappingResponse(BaseModel):
     id: int
+    # Старые поля (для совместимости)
     code_1c: Optional[str]
     bortlanger: Optional[str]
     epiroc: Optional[str]
     almazgeobur: Optional[str]
     competitors: Optional[dict]
+    
+    # Новые базовые поля
+    article_bl: Optional[str]
+    article_agb: Optional[str]
+    variant_1: Optional[str]
+    variant_2: Optional[str]
+    variant_3: Optional[str]
+    variant_4: Optional[str]
+    variant_5: Optional[str]
+    variant_6: Optional[str]
+    variant_7: Optional[str]
+    variant_8: Optional[str]
+    unit: Optional[str]
+    code: Optional[str]
+    nomenclature_agb: Optional[str]
+    packaging: Optional[str]
+    
     created_at: datetime
     updated_at: datetime
     
@@ -403,11 +438,27 @@ def calculate_similarity(text1: str, text2: str) -> float:
 async def create_mapping(mapping: ProductMappingCreate, db: AsyncSession = Depends(get_db)):
     """Создание новой строки в таблице сопоставления"""
     db_mapping = ProductMapping(
+        # Старые поля
         code_1c=mapping.code_1c,
         bortlanger=mapping.bortlanger,
         epiroc=mapping.epiroc,
         almazgeobur=mapping.almazgeobur,
-        competitors=mapping.competitors or {}
+        competitors=mapping.competitors or {},
+        # Новые базовые поля
+        article_bl=mapping.article_bl,
+        article_agb=mapping.article_agb,
+        variant_1=mapping.variant_1,
+        variant_2=mapping.variant_2,
+        variant_3=mapping.variant_3,
+        variant_4=mapping.variant_4,
+        variant_5=mapping.variant_5,
+        variant_6=mapping.variant_6,
+        variant_7=mapping.variant_7,
+        variant_8=mapping.variant_8,
+        unit=mapping.unit,
+        code=mapping.code,
+        nomenclature_agb=mapping.nomenclature_agb,
+        packaging=mapping.packaging
     )
     db.add(db_mapping)
     await db.commit()
@@ -458,12 +509,27 @@ async def search_mappings(
         scores = []
         matched_fields = []
         
-        # Проверяем все поля
+        # Проверяем все поля (старые и новые)
         fields_to_check = {
             'code_1c': mapping.code_1c,
             'bortlanger': mapping.bortlanger,
             'epiroc': mapping.epiroc,
             'almazgeobur': mapping.almazgeobur,
+            # Новые базовые поля
+            'article_bl': mapping.article_bl,
+            'article_agb': mapping.article_agb,
+            'variant_1': mapping.variant_1,
+            'variant_2': mapping.variant_2,
+            'variant_3': mapping.variant_3,
+            'variant_4': mapping.variant_4,
+            'variant_5': mapping.variant_5,
+            'variant_6': mapping.variant_6,
+            'variant_7': mapping.variant_7,
+            'variant_8': mapping.variant_8,
+            'unit': mapping.unit,
+            'code': mapping.code,
+            'nomenclature_agb': mapping.nomenclature_agb,
+            'packaging': mapping.packaging,
         }
         
         # Проверяем конкурентов
@@ -525,6 +591,7 @@ async def update_mapping(
     if not db_mapping:
         raise HTTPException(status_code=404, detail="Mapping not found")
     
+    # Обновляем старые поля
     if mapping.code_1c is not None:
         db_mapping.code_1c = mapping.code_1c
     if mapping.bortlanger is not None:
@@ -535,6 +602,36 @@ async def update_mapping(
         db_mapping.almazgeobur = mapping.almazgeobur
     if mapping.competitors is not None:
         db_mapping.competitors = mapping.competitors
+    
+    # Обновляем новые базовые поля
+    if mapping.article_bl is not None:
+        db_mapping.article_bl = mapping.article_bl
+    if mapping.article_agb is not None:
+        db_mapping.article_agb = mapping.article_agb
+    if mapping.variant_1 is not None:
+        db_mapping.variant_1 = mapping.variant_1
+    if mapping.variant_2 is not None:
+        db_mapping.variant_2 = mapping.variant_2
+    if mapping.variant_3 is not None:
+        db_mapping.variant_3 = mapping.variant_3
+    if mapping.variant_4 is not None:
+        db_mapping.variant_4 = mapping.variant_4
+    if mapping.variant_5 is not None:
+        db_mapping.variant_5 = mapping.variant_5
+    if mapping.variant_6 is not None:
+        db_mapping.variant_6 = mapping.variant_6
+    if mapping.variant_7 is not None:
+        db_mapping.variant_7 = mapping.variant_7
+    if mapping.variant_8 is not None:
+        db_mapping.variant_8 = mapping.variant_8
+    if mapping.unit is not None:
+        db_mapping.unit = mapping.unit
+    if mapping.code is not None:
+        db_mapping.code = mapping.code
+    if mapping.nomenclature_agb is not None:
+        db_mapping.nomenclature_agb = mapping.nomenclature_agb
+    if mapping.packaging is not None:
+        db_mapping.packaging = mapping.packaging
     
     await db.commit()
     await db.refresh(db_mapping)
