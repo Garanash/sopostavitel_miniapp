@@ -1,12 +1,16 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pydantic import BaseModel
 from datetime import datetime
 import json
+import openpyxl
+from io import BytesIO
+import tempfile
+import os
 
 from database import get_db, Article, ProcessedFile, MatchedArticle, ProductMapping, init_db
 from file_processor import FileProcessor
@@ -653,7 +657,7 @@ async def upload_mapping_file(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Загрузка файла с распознаванием и добавлением строк в таблицу"""
+    """Загрузка файла с распознаванием и сопоставлением с таблицей соответствий"""
     try:
         # Сохраняем файл
         file_bytes = await file.read()
@@ -665,76 +669,196 @@ async def upload_mapping_file(
         if not extracted_text.strip():
             raise HTTPException(status_code=400, detail="Не удалось извлечь текст из файла")
         
-        # Парсим текст как CSV или таблицу
-        # Простой парсер для CSV/таблицы
-        lines = extracted_text.split('\n')
-        headers = None
-        created_count = 0
+        # Получаем все записи из таблицы соответствий
+        result = await db.execute(select(ProductMapping))
+        all_mappings = result.scalars().all()
         
-        for i, line in enumerate(lines):
-            line = line.strip()
-            if not line:
-                continue
-            
-            # Разделяем по табуляции или запятой
-            if '\t' in line:
-                parts = [p.strip() for p in line.split('\t')]
-            else:
-                parts = [p.strip() for p in line.split(',')]
-            
-            if i == 0:
-                # Первая строка - заголовки
-                headers = [h.lower().strip() for h in parts]
-                continue
-            
-            if len(parts) < 2:
-                continue
-            
-            # Создаем mapping из строки
-            mapping_data = {}
-            competitors = {}
-            
-            for j, value in enumerate(parts):
-                if j >= len(headers):
-                    break
-                
-                header = headers[j]
-                if not value:
-                    continue
-                
-                # Определяем тип поля
-                if 'код' in header and '1с' in header:
-                    mapping_data['code_1c'] = value
-                elif 'bortlanger' in header.lower():
-                    mapping_data['bortlanger'] = value
-                elif 'epiroc' in header.lower():
-                    mapping_data['epiroc'] = value
-                elif 'almazgeobur' in header.lower() or 'алмазгеобур' in header.lower():
-                    mapping_data['almazgeobur'] = value
-                elif 'конкурент' in header.lower() or 'competitor' in header.lower():
-                    competitors[header] = value
-                else:
-                    # Неизвестное поле - добавляем как конкурента
-                    competitors[header] = value
-            
-            if competitors:
-                mapping_data['competitors'] = competitors
-            
-            # Создаем запись в базе
-            if mapping_data:
-                db_mapping = ProductMapping(**mapping_data)
-                db.add(db_mapping)
-                created_count += 1
+        # Разбиваем текст на строки (артикулы/названия)
+        lines = [line.strip() for line in extracted_text.split('\n') if line.strip()]
         
-        await db.commit()
+        # Результаты распознавания и сопоставления
+        recognition_results = []
+        
+        # Для каждой строки ищем совпадения
+        for line in lines:
+            if not line or len(line) < 2:
+                continue
+            
+            best_match = None
+            best_score = 0.0
+            
+            # Ищем совпадения во всех полях таблицы
+            for mapping in all_mappings:
+                # Проверяем все поля
+                fields_to_check = [
+                    ('article_bl', mapping.article_bl),
+                    ('article_agb', mapping.article_agb),
+                    ('variant_1', mapping.variant_1),
+                    ('variant_2', mapping.variant_2),
+                    ('variant_3', mapping.variant_3),
+                    ('variant_4', mapping.variant_4),
+                    ('variant_5', mapping.variant_5),
+                    ('variant_6', mapping.variant_6),
+                    ('variant_7', mapping.variant_7),
+                    ('variant_8', mapping.variant_8),
+                    ('code', mapping.code),
+                    ('nomenclature_agb', mapping.nomenclature_agb),
+                ]
+                
+                for field_name, field_value in fields_to_check:
+                    if field_value:
+                        score = calculate_similarity(line, str(field_value))
+                        if score > best_score:
+                            best_score = score
+                            best_match = {
+                                'recognized_text': line,
+                                'mapping_id': mapping.id,
+                                'match_score': round(score, 2),
+                                'matched_field': field_name,
+                                'matched_value': field_value,
+                                'mapping': {
+                                    'id': mapping.id,
+                                    'article_bl': mapping.article_bl,
+                                    'article_agb': mapping.article_agb,
+                                    'variant_1': mapping.variant_1,
+                                    'variant_2': mapping.variant_2,
+                                    'variant_3': mapping.variant_3,
+                                    'variant_4': mapping.variant_4,
+                                    'variant_5': mapping.variant_5,
+                                    'variant_6': mapping.variant_6,
+                                    'variant_7': mapping.variant_7,
+                                    'variant_8': mapping.variant_8,
+                                    'unit': mapping.unit,
+                                    'code': mapping.code,
+                                    'nomenclature_agb': mapping.nomenclature_agb,
+                                    'packaging': mapping.packaging,
+                                }
+                            }
+            
+            # Добавляем только если совпадение > 95%
+            if best_match and best_match['match_score'] >= 95.0:
+                recognition_results.append(best_match)
+            elif best_match:
+                # Добавляем даже если < 95%, но с пометкой
+                recognition_results.append(best_match)
+        
+        # Сохраняем результаты в сессию (можно использовать Redis или БД)
+        # Пока сохраняем в файл временно
+        session_id = str(uuid.uuid4())
+        results_file = os.path.join(Config.TEMP_DIR, f"results_{session_id}.json")
+        os.makedirs(Config.TEMP_DIR, exist_ok=True)
+        with open(results_file, 'w', encoding='utf-8') as f:
+            json.dump(recognition_results, f, ensure_ascii=False, indent=2)
         
         return {
-            "message": f"Успешно добавлено {created_count} строк",
-            "created_count": created_count
+            "message": f"Обработано {len(lines)} строк, найдено {len(recognition_results)} совпадений",
+            "recognized_count": len(lines),
+            "matches_count": len(recognition_results),
+            "results": recognition_results[:50],  # Первые 50 результатов
+            "session_id": session_id
         }
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Ошибка при обработке файла: {str(e)}")
+
+@app.get("/api/mappings/upload/export/{session_id}")
+async def export_recognition_results(session_id: str):
+    """Выгрузка результатов распознавания в Excel"""
+    try:
+        results_file = os.path.join(Config.TEMP_DIR, f"results_{session_id}.json")
+        
+        if not os.path.exists(results_file):
+            raise HTTPException(status_code=404, detail="Результаты не найдены")
+        
+        # Загружаем результаты
+        with open(results_file, 'r', encoding='utf-8') as f:
+            results = json.load(f)
+        
+        # Создаем Excel файл
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Результаты распознавания"
+        
+        # Заголовки
+        headers = [
+            'Распознанный текст',
+            'ID соответствия',
+            'Процент совпадения',
+            'Поле совпадения',
+            'Значение совпадения',
+            'Артикул BL',
+            'Артикул АГБ',
+            'Вариант подбора 1',
+            'Вариант подбора 2',
+            'Вариант подбора 3',
+            'Вариант подбора 4',
+            'Вариант подбора 5',
+            'Вариант подбора 6',
+            'Вариант подбора 7',
+            'Вариант подбора 8',
+            'Ед.изм.',
+            'Код',
+            'Номенклатура АГБ',
+            'Фасовка для химии, кг.'
+        ]
+        
+        ws.append(headers)
+        
+        # Данные
+        for result in results:
+            mapping = result.get('mapping', {})
+            row = [
+                result.get('recognized_text', ''),
+                result.get('mapping_id', ''),
+                result.get('match_score', 0),
+                result.get('matched_field', ''),
+                result.get('matched_value', ''),
+                mapping.get('article_bl', ''),
+                mapping.get('article_agb', ''),
+                mapping.get('variant_1', ''),
+                mapping.get('variant_2', ''),
+                mapping.get('variant_3', ''),
+                mapping.get('variant_4', ''),
+                mapping.get('variant_5', ''),
+                mapping.get('variant_6', ''),
+                mapping.get('variant_7', ''),
+                mapping.get('variant_8', ''),
+                mapping.get('unit', ''),
+                mapping.get('code', ''),
+                mapping.get('nomenclature_agb', ''),
+                mapping.get('packaging', ''),
+            ]
+            ws.append(row)
+        
+        # Сохраняем во временный файл
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+        temp_file_path = temp_file.name
+        temp_file.close()
+        wb.save(temp_file_path)
+        
+        # Читаем файл в память
+        with open(temp_file_path, 'rb') as f:
+            file_content = f.read()
+        
+        # Удаляем временный файл
+        os.unlink(temp_file_path)
+        
+        # Создаем BytesIO объект
+        from io import BytesIO
+        file_stream = BytesIO(file_content)
+        
+        return FileResponse(
+            file_stream,
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            filename=f'results_{session_id}.xlsx'
+        )
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Ошибка при выгрузке: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

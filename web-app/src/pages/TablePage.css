@@ -89,6 +89,8 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
+  min-width: 120px; /* Фиксированная ширина */
+  text-align: center;
 }
 
 .btn-danger:hover {
@@ -103,6 +105,8 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
+  min-width: 120px; /* Фиксированная ширина */
+  text-align: center;
 }
 
 .btn-edit:hover {
@@ -112,6 +116,13 @@
 .btn-small {
   padding: 6px 12px;
   font-size: 12px;
+}
+
+.action-buttons-cell {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
 }
 
 .add-form {
@@ -249,6 +260,27 @@
   margin-top: 8px;
 }
 
+.recognition-results {
+  margin-bottom: 24px;
+  padding: 20px;
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+  border-radius: 12px;
+}
+
+.recognition-results h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.recognition-results .btn-primary {
+  margin-bottom: 16px;
+}
+
+.results-table-container {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+
 .table-container {
   overflow-x: auto;
   margin-top: 24px;
@@ -260,6 +292,7 @@
   background: var(--tg-theme-bg-color, #ffffff);
   border-radius: 8px;
   overflow: hidden;
+  table-layout: fixed; /* Фиксированная ширина столбцов */
 }
 
 .mapping-table th,
@@ -267,6 +300,8 @@
   padding: 12px;
   text-align: left;
   border-bottom: 1px solid var(--tg-theme-hint-color, #e0e0e0);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .mapping-table th {

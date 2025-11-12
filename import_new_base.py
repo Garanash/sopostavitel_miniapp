@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Скрипт для импорта данных из файла 'База данных соответствий.xlsx'
-в таблицу product_mappings
+в таблицу product_mappings с новой структурой полей
 """
 
 import asyncio
@@ -38,21 +38,33 @@ async def import_excel_data(session: AsyncSession, file_path: str):
         if len(row_values) >= 2:
             # Проверяем, есть ли известные заголовки
             row_lower = [str(v).lower() if v else '' for v in row_values]
-            if any(keyword in ' '.join(row_lower) for keyword in ['код', 'code', '1с', 'bortlanger', 'epiroc', 'almazgeobur']):
+            row_text = ' '.join(row_lower)
+            # Ищем новые базовые поля
+            if any(keyword in row_text for keyword in ['артикул bl', 'артикул агб', 'вариант подбора', 'ед.изм', 'номенклатура', 'фасовка', 'код']):
                 headers = row_values
                 header_row = row_idx
-                print(f"Найдены заголовки в строке {row_idx}: {headers[:10]}")
+                print(f"Найдены заголовки в строке {row_idx}: {headers[:15]}")
                 break
     
     if not headers:
         # Если заголовки не найдены, используем первую строку
         headers = [cell.value for cell in ws[1] if cell.value]
         header_row = 1
-        print(f"Используем первую строку как заголовки: {headers[:10]}")
+        print(f"Используем первую строку как заголовки: {headers[:15]}")
     
-    # Определяем индексы колонок
+    # Определяем индексы колонок для новых полей
     header_lower = [str(h).lower() if h else '' for h in headers]
     
+    # Новые базовые поля
+    article_bl_idx = None
+    article_agb_idx = None
+    variant_indices = {}  # {1: idx, 2: idx, ...}
+    unit_idx = None
+    code_idx = None
+    nomenclature_agb_idx = None
+    packaging_idx = None
+    
+    # Старые поля (для совместимости)
     code_1c_idx = None
     bortlanger_idx = None
     epiroc_idx = None
@@ -61,7 +73,34 @@ async def import_excel_data(session: AsyncSession, file_path: str):
     
     for idx, header in enumerate(header_lower):
         header_str = str(header).strip()
-        if 'код' in header_str and '1с' in header_str:
+        
+        # Новые базовые поля
+        if 'артикул bl' in header_str or 'артикул bl' in header_str:
+            article_bl_idx = idx
+        elif 'артикул агб' in header_str or 'артикул агб' in header_str:
+            article_agb_idx = idx
+        elif 'вариант подбора' in header_str:
+            # Извлекаем номер варианта
+            try:
+                # Ищем число в строке
+                import re
+                numbers = re.findall(r'\d+', header_str)
+                if numbers:
+                    variant_num = int(numbers[0])
+                    if 1 <= variant_num <= 8:
+                        variant_indices[variant_num] = idx
+            except:
+                pass
+        elif 'ед.изм' in header_str or 'единица' in header_str:
+            unit_idx = idx
+        elif ('код' in header_str and '1с' not in header_str and 'номенклатура' not in header_str) or header_str == 'код':
+            code_idx = idx
+        elif 'номенклатура агб' in header_str or 'номенклатура' in header_str:
+            nomenclature_agb_idx = idx
+        elif 'фасовка' in header_str or 'кг' in header_str:
+            packaging_idx = idx
+        # Старые поля
+        elif 'код' in header_str and '1с' in header_str:
             code_1c_idx = idx
         elif 'bortlanger' in header_str or 'бортлангер' in header_str:
             bortlanger_idx = idx
@@ -70,15 +109,18 @@ async def import_excel_data(session: AsyncSession, file_path: str):
         elif 'almazgeobur' in header_str or 'алмазгеобур' in header_str:
             almazgeobur_idx = idx
         else:
-            # Остальные колонки - конкуренты
+            # Остальные колонки - конкуренты (если не системные)
             if header_str and header_str not in ['id', 'действия', 'action']:
                 competitor_indices[idx] = header_str
     
-    print(f"Индексы колонок:")
-    print(f"  code_1c: {code_1c_idx}")
-    print(f"  bortlanger: {bortlanger_idx}")
-    print(f"  epiroc: {epiroc_idx}")
-    print(f"  almazgeobur: {almazgeobur_idx}")
+    print(f"\nИндексы колонок:")
+    print(f"  article_bl: {article_bl_idx}")
+    print(f"  article_agb: {article_agb_idx}")
+    print(f"  variant_1-8: {variant_indices}")
+    print(f"  unit: {unit_idx}")
+    print(f"  code: {code_idx}")
+    print(f"  nomenclature_agb: {nomenclature_agb_idx}")
+    print(f"  packaging: {packaging_idx}")
     print(f"  конкурентов: {len(competitor_indices)}")
     
     # Импортируем данные
@@ -92,37 +134,67 @@ async def import_excel_data(session: AsyncSession, file_path: str):
         if not any(row_values):
             continue
         
-        # Извлекаем значения
-        code_1c = str(row_values[code_1c_idx]).strip() if code_1c_idx is not None and code_1c_idx < len(row_values) and row_values[code_1c_idx] else None
-        bortlanger = str(row_values[bortlanger_idx]).strip() if bortlanger_idx is not None and bortlanger_idx < len(row_values) and row_values[bortlanger_idx] else None
-        epiroc = str(row_values[epiroc_idx]).strip() if epiroc_idx is not None and epiroc_idx < len(row_values) and row_values[epiroc_idx] else None
-        almazgeobur = str(row_values[almazgeobur_idx]).strip() if almazgeobur_idx is not None and almazgeobur_idx < len(row_values) and row_values[almazgeobur_idx] else None
+        # Извлекаем значения для новых полей
+        def get_value(idx):
+            if idx is not None and idx < len(row_values) and row_values[idx]:
+                val = str(row_values[idx]).strip()
+                if val and val.lower() not in ['none', '-', '', 'none']:
+                    return val
+            return None
         
-        # Очищаем значения
-        if code_1c and (code_1c.lower() == 'none' or code_1c == '-' or code_1c == ''):
-            code_1c = None
-        if bortlanger and (bortlanger.lower() == 'none' or bortlanger == '-' or bortlanger == ''):
-            bortlanger = None
-        if epiroc and (epiroc.lower() == 'none' or epiroc == '-' or epiroc == ''):
-            epiroc = None
-        if almazgeobur and (almazgeobur.lower() == 'none' or almazgeobur == '-' or almazgeobur == ''):
-            almazgeobur = None
+        article_bl = get_value(article_bl_idx)
+        article_agb = get_value(article_agb_idx)
+        variant_1 = get_value(variant_indices.get(1))
+        variant_2 = get_value(variant_indices.get(2))
+        variant_3 = get_value(variant_indices.get(3))
+        variant_4 = get_value(variant_indices.get(4))
+        variant_5 = get_value(variant_indices.get(5))
+        variant_6 = get_value(variant_indices.get(6))
+        variant_7 = get_value(variant_indices.get(7))
+        variant_8 = get_value(variant_indices.get(8))
+        unit = get_value(unit_idx)
+        code = get_value(code_idx)
+        nomenclature_agb = get_value(nomenclature_agb_idx)
+        packaging = get_value(packaging_idx)
+        
+        # Старые поля (для совместимости)
+        code_1c = get_value(code_1c_idx)
+        bortlanger = get_value(bortlanger_idx)
+        epiroc = get_value(epiroc_idx)
+        almazgeobur = get_value(almazgeobur_idx)
         
         # Собираем конкурентов
         competitors = {}
         for idx, name in competitor_indices.items():
-            if idx < len(row_values) and row_values[idx]:
-                value = str(row_values[idx]).strip()
-                if value and value.lower() not in ['none', '-', '']:
-                    competitors[name] = value
+            val = get_value(idx)
+            if val:
+                competitors[name] = val
         
         # Пропускаем полностью пустые строки
-        if not any([code_1c, bortlanger, epiroc, almazgeobur, competitors]):
+        if not any([article_bl, article_agb, variant_1, variant_2, variant_3, variant_4, 
+                   variant_5, variant_6, variant_7, variant_8, unit, code, 
+                   nomenclature_agb, packaging, code_1c, bortlanger, epiroc, almazgeobur, competitors]):
             skipped += 1
             continue
         
         # Создаем запись
         mapping = ProductMapping(
+            # Новые базовые поля
+            article_bl=article_bl,
+            article_agb=article_agb,
+            variant_1=variant_1,
+            variant_2=variant_2,
+            variant_3=variant_3,
+            variant_4=variant_4,
+            variant_5=variant_5,
+            variant_6=variant_6,
+            variant_7=variant_7,
+            variant_8=variant_8,
+            unit=unit,
+            code=code,
+            nomenclature_agb=nomenclature_agb,
+            packaging=packaging,
+            # Старые поля (для совместимости)
             code_1c=code_1c,
             bortlanger=bortlanger,
             epiroc=epiroc,
@@ -167,4 +239,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

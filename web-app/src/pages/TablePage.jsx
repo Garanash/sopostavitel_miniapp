@@ -13,6 +13,8 @@ function TablePage() {
   const [uploading, setUploading] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
+  const [recognitionResults, setRecognitionResults] = useState([])
+  const [sessionId, setSessionId] = useState(null)
   
   // Пагинация
   const [currentPage, setCurrentPage] = useState(1)
@@ -131,6 +133,8 @@ function TablePage() {
     const file = acceptedFiles[0]
     setUploading(true)
     setError(null)
+    setRecognitionResults([])
+    setSessionId(null)
 
     try {
       const formData = new FormData()
@@ -140,16 +144,44 @@ function TablePage() {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
+        timeout: 300000, // 5 минут для больших файлов
       })
 
-      alert(`✅ ${response.data.message}`)
-      await loadMappings()
+      setRecognitionResults(response.data.results || [])
+      setSessionId(response.data.session_id)
+      
+      alert(`✅ ${response.data.message}\nНайдено совпадений: ${response.data.matches_count}`)
     } catch (err) {
       setError(err.response?.data?.detail || err.message || 'Ошибка при загрузке файла')
     } finally {
       setUploading(false)
     }
   }, [])
+
+  const handleExportResults = async () => {
+    if (!sessionId) {
+      alert('Нет результатов для выгрузки')
+      return
+    }
+
+    try {
+      const response = await axios.get(`/api/mappings/upload/export/${sessionId}`, {
+        responseType: 'blob',
+      })
+
+      // Создаем ссылку для скачивания
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `results_${sessionId}.xlsx`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'Ошибка при выгрузке')
+    }
+  }
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -485,6 +517,43 @@ function TablePage() {
         </div>
       </div>
 
+      {recognitionResults.length > 0 && (
+        <div className="recognition-results">
+          <h3>Результаты распознавания ({recognitionResults.length})</h3>
+          <button className="btn-primary" onClick={handleExportResults}>
+            📥 Выгрузить в Excel
+          </button>
+          <div className="results-table-container">
+            <table className="mapping-table">
+              <thead>
+                <tr>
+                  <th>Распознанный текст</th>
+                  <th>Процент совпадения</th>
+                  <th>Артикул АГБ</th>
+                  <th>Номенклатура АГБ</th>
+                  <th>Код</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recognitionResults.map((result, idx) => (
+                  <tr key={idx}>
+                    <td>{result.recognized_text}</td>
+                    <td>
+                      <span className={`match-score score-${Math.floor(result.match_score / 25)}`}>
+                        {result.match_score}%
+                      </span>
+                    </td>
+                    <td>{result.mapping?.article_agb || '-'}</td>
+                    <td>{result.mapping?.nomenclature_agb || '-'}</td>
+                    <td>{result.mapping?.code || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {displayData.length > 0 && (
         <div className="table-container">
           <table className="mapping-table">
@@ -543,19 +612,20 @@ function TablePage() {
                       </td>
                     )}
                     <td>
-                      <button
-                        className="btn-edit btn-small"
-                        onClick={() => handleEdit(m)}
-                        style={{ marginRight: '5px' }}
-                      >
-                        ✏️ Редактировать
-                      </button>
-                      <button
-                        className="btn-danger btn-small"
-                        onClick={() => handleDelete(m.id)}
-                      >
-                        🗑️ Удалить
-                      </button>
+                      <div className="action-buttons-cell">
+                        <button
+                          className="btn-edit btn-small"
+                          onClick={() => handleEdit(m)}
+                        >
+                          ✏️ Редактировать
+                        </button>
+                        <button
+                          className="btn-danger btn-small"
+                          onClick={() => handleDelete(m.id)}
+                        >
+                          🗑️ Удалить
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )
