@@ -70,13 +70,32 @@ function TablePage() {
     } catch (err) {
       console.error('Ошибка загрузки:', err)
       let errorMessage = 'Ошибка при загрузке таблицы'
-      if (err.response) {
-        errorMessage = err.response.data?.detail || err.response.statusText || errorMessage
+      
+      if (err.response?.data) {
+        const errorData = err.response.data
+        
+        if (Array.isArray(errorData.detail)) {
+          errorMessage = errorData.detail.map(e => {
+            if (typeof e === 'object' && e.msg) {
+              return `${e.loc?.join('.') || ''}: ${e.msg}`
+            }
+            return String(e)
+          }).join(', ')
+        } else if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail
+        } else if (errorData.detail?.msg) {
+          errorMessage = errorData.detail.msg
+        } else if (typeof errorData.detail === 'object') {
+          errorMessage = JSON.stringify(errorData.detail)
+        } else {
+          errorMessage = String(errorData.detail || errorData.message || errorMessage)
+        }
       } else if (err.request) {
         errorMessage = 'Нет ответа от сервера. Проверьте подключение.'
-      } else {
-        errorMessage = err.message || errorMessage
+      } else if (err.message) {
+        errorMessage = err.message
       }
+      
       setError(errorMessage)
       setMappings([])
       setTotalItems(0)
@@ -152,7 +171,41 @@ function TablePage() {
       
       alert(`✅ ${response.data.message}\nНайдено совпадений: ${response.data.matches_count}`)
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Ошибка при загрузке файла')
+      // Правильная обработка ошибок FastAPI
+      let errorMessage = 'Ошибка при загрузке файла'
+      
+      if (err.response?.data) {
+        const errorData = err.response.data
+        
+        // Если это массив ошибок валидации
+        if (Array.isArray(errorData.detail)) {
+          errorMessage = errorData.detail.map(e => {
+            if (typeof e === 'object' && e.msg) {
+              return `${e.loc?.join('.') || ''}: ${e.msg}`
+            }
+            return String(e)
+          }).join(', ')
+        } 
+        // Если это строка
+        else if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail
+        }
+        // Если это объект с сообщением
+        else if (errorData.detail?.msg) {
+          errorMessage = errorData.detail.msg
+        }
+        // Если это просто объект, преобразуем в строку
+        else if (typeof errorData.detail === 'object') {
+          errorMessage = JSON.stringify(errorData.detail)
+        }
+        else {
+          errorMessage = String(errorData.detail || errorData.message || errorMessage)
+        }
+      } else if (err.message) {
+        errorMessage = err.message
+      }
+      
+      setError(errorMessage)
     } finally {
       setUploading(false)
     }
@@ -179,7 +232,33 @@ function TablePage() {
       link.remove()
       window.URL.revokeObjectURL(url)
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Ошибка при выгрузке')
+      // Правильная обработка ошибок FastAPI
+      let errorMessage = 'Ошибка при выгрузке'
+      
+      if (err.response?.data) {
+        const errorData = err.response.data
+        
+        if (Array.isArray(errorData.detail)) {
+          errorMessage = errorData.detail.map(e => {
+            if (typeof e === 'object' && e.msg) {
+              return `${e.loc?.join('.') || ''}: ${e.msg}`
+            }
+            return String(e)
+          }).join(', ')
+        } else if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail
+        } else if (errorData.detail?.msg) {
+          errorMessage = errorData.detail.msg
+        } else if (typeof errorData.detail === 'object') {
+          errorMessage = JSON.stringify(errorData.detail)
+        } else {
+          errorMessage = String(errorData.detail || errorData.message || errorMessage)
+        }
+      } else if (err.message) {
+        errorMessage = err.message
+      }
+      
+      setError(errorMessage)
     }
   }
 
@@ -241,7 +320,33 @@ function TablePage() {
       resetForm()
       await loadMappings()
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Ошибка при сохранении')
+      // Правильная обработка ошибок FastAPI
+      let errorMessage = 'Ошибка при сохранении'
+      
+      if (err.response?.data) {
+        const errorData = err.response.data
+        
+        if (Array.isArray(errorData.detail)) {
+          errorMessage = errorData.detail.map(e => {
+            if (typeof e === 'object' && e.msg) {
+              return `${e.loc?.join('.') || ''}: ${e.msg}`
+            }
+            return String(e)
+          }).join(', ')
+        } else if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail
+        } else if (errorData.detail?.msg) {
+          errorMessage = errorData.detail.msg
+        } else if (typeof errorData.detail === 'object') {
+          errorMessage = JSON.stringify(errorData.detail)
+        } else {
+          errorMessage = String(errorData.detail || errorData.message || errorMessage)
+        }
+      } else if (err.message) {
+        errorMessage = err.message
+      }
+      
+      setError(errorMessage)
     }
   }
 
@@ -286,7 +391,33 @@ function TablePage() {
         handleSearch()
       }
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Ошибка при удалении')
+      // Правильная обработка ошибок FastAPI
+      let errorMessage = 'Ошибка при удалении'
+      
+      if (err.response?.data) {
+        const errorData = err.response.data
+        
+        if (Array.isArray(errorData.detail)) {
+          errorMessage = errorData.detail.map(e => {
+            if (typeof e === 'object' && e.msg) {
+              return `${e.loc?.join('.') || ''}: ${e.msg}`
+            }
+            return String(e)
+          }).join(', ')
+        } else if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail
+        } else if (errorData.detail?.msg) {
+          errorMessage = errorData.detail.msg
+        } else if (typeof errorData.detail === 'object') {
+          errorMessage = JSON.stringify(errorData.detail)
+        } else {
+          errorMessage = String(errorData.detail || errorData.message || errorMessage)
+        }
+      } else if (err.message) {
+        errorMessage = err.message
+      }
+      
+      setError(errorMessage)
     }
   }
   

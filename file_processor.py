@@ -90,7 +90,25 @@ class FileProcessor:
     async def extract_text_from_excel(self, excel_path: str) -> str:
         """Извлечение текста из Excel файла"""
         try:
-            workbook = openpyxl.load_workbook(excel_path)
+            # Пробуем открыть как Excel
+            try:
+                workbook = openpyxl.load_workbook(excel_path, data_only=True)
+            except:
+                # Если не Excel, пробуем как CSV
+                import csv
+                text_parts = []
+                with open(excel_path, 'r', encoding='utf-8') as f:
+                    try:
+                        reader = csv.reader(f)
+                        for row in reader:
+                            row_text = " ".join([str(cell) if cell else "" for cell in row])
+                            if row_text.strip():
+                                text_parts.append(row_text)
+                    except:
+                        # Если не CSV, читаем как обычный текст
+                        text_parts = f.readlines()
+                return "\n".join(text_parts)
+            
             text_parts = []
             
             for sheet_name in workbook.sheetnames:
@@ -103,6 +121,8 @@ class FileProcessor:
             return "\n".join(text_parts)
         except Exception as e:
             print(f"Ошибка при чтении Excel: {e}")
+            import traceback
+            traceback.print_exc()
             return ""
     
     async def extract_text_from_word(self, word_path: str) -> str:
@@ -121,6 +141,23 @@ class FileProcessor:
         
         if not file_path_obj.exists():
             raise FileNotFoundError(f"Файл не найден: {file_path}")
+        
+        # Если тип файла не определен или application/octet-stream, определяем по расширению
+        if file_type == "application/octet-stream" or not file_type:
+            ext = file_path_obj.suffix.lower()
+            if ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
+                file_type = "image/jpeg"
+            elif ext == '.pdf':
+                file_type = "application/pdf"
+            elif ext in ['.xlsx', '.xls']:
+                file_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            elif ext == '.docx':
+                file_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            elif ext == '.csv':
+                # CSV обрабатываем как Excel
+                return await self.extract_text_from_excel(file_path)
+            else:
+                raise ValueError(f"Неподдерживаемый тип файла: {file_type} (расширение: {ext})")
         
         if file_type.startswith("image/"):
             return await self.extract_text_from_image(file_path)

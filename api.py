@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional, Dict
@@ -11,6 +11,7 @@ import openpyxl
 from io import BytesIO
 import tempfile
 import os
+import uuid
 
 from database import get_db, Article, ProcessedFile, MatchedArticle, ProductMapping, init_db
 from file_processor import FileProcessor
@@ -838,21 +839,24 @@ async def export_recognition_results(session_id: str):
         temp_file.close()
         wb.save(temp_file_path)
         
-        # Читаем файл в память
-        with open(temp_file_path, 'rb') as f:
-            file_content = f.read()
+        # Используем StreamingResponse для отправки файла
+        def generate():
+            with open(temp_file_path, 'rb') as f:
+                while True:
+                    chunk = f.read(8192)
+                    if not chunk:
+                        break
+                    yield chunk
+            # Удаляем файл после отправки
+            try:
+                os.unlink(temp_file_path)
+            except:
+                pass
         
-        # Удаляем временный файл
-        os.unlink(temp_file_path)
-        
-        # Создаем BytesIO объект
-        from io import BytesIO
-        file_stream = BytesIO(file_content)
-        
-        return FileResponse(
-            file_stream,
+        return StreamingResponse(
+            generate(),
             media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            filename=f'results_{session_id}.xlsx'
+            headers={"Content-Disposition": f"attachment; filename=results_{session_id}.xlsx"}
         )
         
     except Exception as e:
