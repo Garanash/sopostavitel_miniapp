@@ -187,19 +187,43 @@ function TablePage() {
       })
 
       const allResults = response.data.results || []
+      console.log('Все результаты:', allResults)
+      console.log('Количество результатов:', allResults.length)
+      
       // Фильтруем только результаты с совпадением > 80%
-      const filteredResults = allResults.filter(result => 
-        result.match_score && result.match_score > 80 && result.mapping
-      )
+      const filteredResults = allResults.filter(result => {
+        const hasMapping = result.mapping && typeof result.mapping === 'object'
+        const hasScore = result.match_score !== null && result.match_score !== undefined
+        const scoreAbove80 = hasScore && result.match_score > 80
+        console.log('Результат:', { 
+          match_score: result.match_score, 
+          hasMapping, 
+          hasScore, 
+          scoreAbove80 
+        })
+        return hasMapping && hasScore && scoreAbove80
+      })
+      
+      console.log('Отфильтрованные результаты (> 80%):', filteredResults)
+      console.log('Количество отфильтрованных:', filteredResults.length)
       
       setRecognitionResults(filteredResults)
       setSessionId(response.data.session_id)
       
-      // Открываем модальное окно с результатами
+      // Всегда открываем модальное окно, если есть результаты
+      // Но показываем только те, что > 80%
       if (filteredResults.length > 0) {
+        console.log('Открываю модальное окно с результатами > 80%')
+        setShowRecognitionModal(true)
+      } else if (allResults.length > 0) {
+        // Если есть результаты, но все < 80%, все равно показываем модальное окно
+        console.log('Есть результаты, но все < 80%. Показываю пустое модальное окно')
         setShowRecognitionModal(true)
       } else {
-        alert(`✅ ${response.data.message}\nНайдено совпадений: ${response.data.matches_count}\nСовпадений > 80%: 0`)
+        // Нет результатов вообще
+        const message = `✅ ${response.data.message}\nНайдено совпадений: ${response.data.matches_count}`
+        console.log('Нет результатов, показываю alert:', message)
+        alert(message)
       }
     } catch (err) {
       let errorMessage = 'Ошибка при загрузке файла'
@@ -734,50 +758,63 @@ function TablePage() {
       )}
 
       {/* Модальное окно с результатами распознавания */}
-      {showRecognitionModal && recognitionResults.length > 0 && (
+      {showRecognitionModal && (
         <div className="modal-overlay" onClick={() => setShowRecognitionModal(false)}>
           <div className="modal-content recognition-modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Результаты обработки файла ({recognitionResults.length})</h2>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <button className="btn-primary" onClick={handleExportResults} style={{ margin: 0 }}>
-                  📥 Выгрузить в Excel
-                </button>
+                {recognitionResults.length > 0 && sessionId && (
+                  <button className="btn-primary" onClick={handleExportResults} style={{ margin: 0 }}>
+                    📥 Выгрузить в Excel
+                  </button>
+                )}
                 <button className="modal-close" onClick={() => setShowRecognitionModal(false)}>×</button>
               </div>
             </div>
             <div className="modal-body">
-              <div className="recognition-results-list">
-                {recognitionResults.map((result, idx) => (
-                  <div key={idx} className="recognition-result-item">
-                    <div className="recognition-result-main">
-                      <div className="recognition-result-row">
-                        <span className="recognition-label">Артикул АГБ:</span>
-                        <span className="recognition-value">{result.mapping?.article_agb || '-'}</span>
+              {recognitionResults.length > 0 ? (
+                <div className="recognition-results-list">
+                  {recognitionResults
+                    .filter(result => result.match_score && result.match_score > 80 && result.mapping)
+                    .map((result, idx) => (
+                      <div key={idx} className="recognition-result-item">
+                        <div className="recognition-result-main">
+                          <div className="recognition-result-row">
+                            <span className="recognition-label">Артикул АГБ:</span>
+                            <span className="recognition-value">{result.mapping?.article_agb || '-'}</span>
+                          </div>
+                          <div className="recognition-result-row">
+                            <span className="recognition-label">Номенклатура АГБ:</span>
+                            <span className="recognition-value">{result.mapping?.nomenclature_agb || '-'}</span>
+                          </div>
+                          <div className="recognition-result-row">
+                            <span className="recognition-label">Совпадение:</span>
+                            <span className={`match-score score-${Math.floor((result.match_score || 0) / 25)}`}>
+                              {result.match_score ? result.match_score.toFixed(1) : '0'}%
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          className="btn-details"
+                          onClick={() => {
+                            setShowRecognitionModal(false)
+                            openModal(result.mapping, result.match_score)
+                          }}
+                        >
+                          Подробнее
+                        </button>
                       </div>
-                      <div className="recognition-result-row">
-                        <span className="recognition-label">Номенклатура АГБ:</span>
-                        <span className="recognition-value">{result.mapping?.nomenclature_agb || '-'}</span>
-                      </div>
-                      <div className="recognition-result-row">
-                        <span className="recognition-label">Совпадение:</span>
-                        <span className={`match-score score-${Math.floor(result.match_score / 25)}`}>
-                          {result.match_score.toFixed(1)}%
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      className="btn-details"
-                      onClick={() => {
-                        setShowRecognitionModal(false)
-                        openModal(result.mapping, result.match_score)
-                      }}
-                    >
-                      Подробнее
-                    </button>
-                  </div>
-                ))}
-              </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <p>Нет результатов с совпадением более 80%</p>
+                  <p style={{ fontSize: '14px', color: 'var(--tg-theme-hint-color, #999999)', marginTop: '8px' }}>
+                    Попробуйте загрузить другой файл или проверьте данные в таблице соответствий.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
