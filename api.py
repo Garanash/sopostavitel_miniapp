@@ -13,10 +13,11 @@ import tempfile
 import os
 import uuid
 
-from database import get_db, Article, ProcessedFile, MatchedArticle, ProductMapping, init_db
+from database import get_db, Article, ProcessedFile, MatchedArticle, ProductMapping, ConfirmedMapping, init_db
 from file_processor import FileProcessor
 from config import Config
 from difflib import SequenceMatcher
+import openai
 
 app = FastAPI(title="Article Matcher API", version="1.0.0")
 
@@ -398,6 +399,121 @@ class ProductMappingSearchResponse(BaseModel):
     match_score: float
     matched_fields: List[str]
 
+async def ai_interpret_text(recognized_text: str, available_mappings: List[ProductMapping], db: AsyncSession) -> Optional[Dict]:
+    """Использует AI для интерпретации распознанного текста и поиска в БД"""
+    if not Config.OPENAI_API_KEY:
+        return None  # Если нет API ключа, возвращаем None
+    
+    try:
+        # Сначала проверяем подтвержденные сопоставления
+        confirmed_result = await db.execute(
+            select(ConfirmedMapping).where(
+                ConfirmedMapping.recognized_text.ilike(f"%{recognized_text}%")
+            )
+        )
+        confirmed = confirmed_result.scalar_one_or_none()
+        if confirmed:
+            # Находим mapping по ID
+            mapping_result = await db.execute(
+                select(ProductMapping).where(ProductMapping.id == confirmed.mapping_id)
+            )
+            mapping = mapping_result.scalar_one_or_none()
+            if mapping:
+                return {
+                    'mapping_id': mapping.id,
+                    'match_score': 100.0,  # Подтвержденные сопоставления имеют 100%
+                    'is_confirmed': True,
+                    'mapping': mapping
+                }
+        
+        # Подготавливаем данные для AI (первые 30 записей для экономии токенов)
+        # Приоритет записям с артикулом АГБ
+        mappings_with_agb = [m for m in available_mappings if m.article_agb][:30]
+        if not mappings_with_agb:
+            mappings_with_agb = available_mappings[:30]
+        
+        sample_data = []
+        for m in mappings_with_agb:
+            sample_data.append({
+                'id': m.id,
+                'article_agb': m.article_agb or '',
+                'nomenclature_agb': m.nomenclature_agb or '',
+                'code': m.code or '',
+                'variant_1': m.variant_1 or '',
+                'variant_2': m.variant_2 or '',
+            })
+        
+        # Формируем промпт для AI
+        prompt = f"""Ты помощник для поиска соответствий в базе данных товаров.
+
+Распознанный текст из файла: "{recognized_text}"
+
+Доступные записи в базе данных (примеры, всего записей в БД: {len(available_mappings)}):
+{json.dumps(sample_data, ensure_ascii=False, indent=2)}
+
+Задача: найди наиболее подходящую запись из базы данных для распознанного текста.
+Учитывай возможные опечатки, сокращения и вариации написания.
+Ищи совпадения по артикулам, кодам, номенклатуре и вариантам подбора.
+
+ВАЖНО: Если в базе данных есть запись с точно таким же текстом или очень похожим (более 80% совпадения), верни её ID.
+Если не уверен (менее 50% совпадения), верни mapping_id: null.
+
+Ответь ТОЛЬКО в формате JSON:
+{{
+    "mapping_id": <id записи из базы или null>,
+    "confidence": <0-100, процент уверенности>,
+    "reasoning": "<краткое объяснение почему выбрана эта запись>"
+}}
+
+Если не нашел подходящей записи, верни mapping_id: null."""
+
+        # Вызываем OpenAI API
+        client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
+        response = client.chat.completions.create(
+            model=Config.OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": "Ты помощник для поиска соответствий в базе данных. Отвечай только в формате JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,  # Низкая температура для более точных результатов
+            max_tokens=200
+        )
+        
+        ai_response = response.choices[0].message.content.strip()
+        
+        # Парсим ответ AI
+        try:
+            # Убираем markdown код блоки если есть
+            if ai_response.startswith("```"):
+                ai_response = ai_response.split("```")[1]
+                if ai_response.startswith("json"):
+                    ai_response = ai_response[4:]
+            ai_response = ai_response.strip()
+            
+            ai_result = json.loads(ai_response)
+            
+            if ai_result.get('mapping_id') and ai_result.get('confidence', 0) > 50:
+                # Находим mapping по ID
+                mapping_result = await db.execute(
+                    select(ProductMapping).where(ProductMapping.id == ai_result['mapping_id'])
+                )
+                mapping = mapping_result.scalar_one_or_none()
+                if mapping:
+                    return {
+                        'mapping_id': mapping.id,
+                        'match_score': float(ai_result.get('confidence', 0)),
+                        'is_ai_match': True,
+                        'reasoning': ai_result.get('reasoning', ''),
+                        'mapping': mapping
+                    }
+        except json.JSONDecodeError:
+            pass  # Если не удалось распарсить, возвращаем None
+        
+        return None
+    except Exception as e:
+        print(f"Ошибка AI-поиска: {e}")
+        return None  # В случае ошибки возвращаем None, будет использован обычный поиск
+
 def calculate_similarity(text1: str, text2: str) -> float:
     """Вычисляет процент совпадения между двумя строками на основе совпадения слов"""
     if not text1 or not text2:
@@ -688,10 +804,44 @@ async def upload_mapping_file(
             best_match = None
             best_score = 0.0
             
-            # Ищем совпадения во всех полях таблицы
-            for mapping in all_mappings:
-                # Проверяем все поля
-                fields_to_check = [
+            # Сначала пробуем AI-поиск
+            ai_match = await ai_interpret_text(line, all_mappings, db)
+            if ai_match and ai_match.get('match_score', 0) > best_score:
+                best_score = ai_match['match_score']
+                mapping = ai_match['mapping']
+                best_match = {
+                    'recognized_text': line,
+                    'mapping_id': mapping.id,
+                    'match_score': round(best_score, 2),
+                    'matched_field': 'ai_match',
+                    'matched_value': line,
+                    'is_ai_match': True,
+                    'is_confirmed': ai_match.get('is_confirmed', False),
+                    'mapping': {
+                        'id': mapping.id,
+                        'article_bl': mapping.article_bl,
+                        'article_agb': mapping.article_agb,
+                        'variant_1': mapping.variant_1,
+                        'variant_2': mapping.variant_2,
+                        'variant_3': mapping.variant_3,
+                        'variant_4': mapping.variant_4,
+                        'variant_5': mapping.variant_5,
+                        'variant_6': mapping.variant_6,
+                        'variant_7': mapping.variant_7,
+                        'variant_8': mapping.variant_8,
+                        'unit': mapping.unit,
+                        'code': mapping.code,
+                        'nomenclature_agb': mapping.nomenclature_agb,
+                        'packaging': mapping.packaging,
+                    }
+                }
+            
+            # Если AI не нашел или результат слабый, используем обычный поиск
+            if not best_match or best_score < 80:
+                # Ищем совпадения во всех полях таблицы
+                for mapping in all_mappings:
+                    # Проверяем все поля
+                    fields_to_check = [
                     ('article_bl', mapping.article_bl),
                     ('article_agb', mapping.article_agb),
                     ('variant_1', mapping.variant_1),
@@ -704,43 +854,40 @@ async def upload_mapping_file(
                     ('variant_8', mapping.variant_8),
                     ('code', mapping.code),
                     ('nomenclature_agb', mapping.nomenclature_agb),
-                ]
-                
-                for field_name, field_value in fields_to_check:
-                    if field_value:
-                        score = calculate_similarity(line, str(field_value))
-                        if score > best_score:
-                            best_score = score
-                            best_match = {
-                                'recognized_text': line,
-                                'mapping_id': mapping.id,
-                                'match_score': round(score, 2),
-                                'matched_field': field_name,
-                                'matched_value': field_value,
-                                'mapping': {
-                                    'id': mapping.id,
-                                    'article_bl': mapping.article_bl,
-                                    'article_agb': mapping.article_agb,
-                                    'variant_1': mapping.variant_1,
-                                    'variant_2': mapping.variant_2,
-                                    'variant_3': mapping.variant_3,
-                                    'variant_4': mapping.variant_4,
-                                    'variant_5': mapping.variant_5,
-                                    'variant_6': mapping.variant_6,
-                                    'variant_7': mapping.variant_7,
-                                    'variant_8': mapping.variant_8,
-                                    'unit': mapping.unit,
-                                    'code': mapping.code,
-                                    'nomenclature_agb': mapping.nomenclature_agb,
-                                    'packaging': mapping.packaging,
+                    ]
+                    
+                    for field_name, field_value in fields_to_check:
+                        if field_value:
+                            score = calculate_similarity(line, str(field_value))
+                            if score > best_score:
+                                best_score = score
+                                best_match = {
+                                    'recognized_text': line,
+                                    'mapping_id': mapping.id,
+                                    'match_score': round(score, 2),
+                                    'matched_field': field_name,
+                                    'matched_value': field_value,
+                                    'mapping': {
+                                        'id': mapping.id,
+                                        'article_bl': mapping.article_bl,
+                                        'article_agb': mapping.article_agb,
+                                        'variant_1': mapping.variant_1,
+                                        'variant_2': mapping.variant_2,
+                                        'variant_3': mapping.variant_3,
+                                        'variant_4': mapping.variant_4,
+                                        'variant_5': mapping.variant_5,
+                                        'variant_6': mapping.variant_6,
+                                        'variant_7': mapping.variant_7,
+                                        'variant_8': mapping.variant_8,
+                                        'unit': mapping.unit,
+                                        'code': mapping.code,
+                                        'nomenclature_agb': mapping.nomenclature_agb,
+                                        'packaging': mapping.packaging,
+                                    }
                                 }
-                            }
             
-            # Добавляем только если совпадение > 95%
-            if best_match and best_match['match_score'] >= 95.0:
-                recognition_results.append(best_match)
-            elif best_match:
-                # Добавляем даже если < 95%, но с пометкой
+            # Добавляем результат если есть совпадение
+            if best_match:
                 recognition_results.append(best_match)
         
         # Сохраняем результаты в сессию (можно использовать Redis или БД)
@@ -763,6 +910,52 @@ async def upload_mapping_file(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Ошибка при обработке файла: {str(e)}")
+
+@app.post("/api/mappings/confirm")
+async def confirm_mapping(
+    recognized_text: str = Query(..., description="Распознанный текст"),
+    mapping_id: int = Query(..., description="ID сопоставления"),
+    match_score: float = Query(None, description="Процент совпадения"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Подтверждение сопоставления для использования в будущем"""
+    try:
+        # Проверяем, существует ли уже такое подтверждение
+        existing = await db.execute(
+            select(ConfirmedMapping).where(
+                ConfirmedMapping.recognized_text == recognized_text,
+                ConfirmedMapping.mapping_id == mapping_id
+            )
+        )
+        confirmed = existing.scalar_one_or_none()
+        
+        if confirmed:
+            # Увеличиваем счетчик подтверждений
+            confirmed.user_confirmed += 1
+            confirmed.match_score = match_score or confirmed.match_score
+            confirmed.updated_at = datetime.utcnow()
+        else:
+            # Создаем новое подтверждение
+            confirmed = ConfirmedMapping(
+                recognized_text=recognized_text,
+                mapping_id=mapping_id,
+                match_score=match_score or 100.0,
+                user_confirmed=1
+            )
+            db.add(confirmed)
+        
+        await db.commit()
+        await db.refresh(confirmed)
+        
+        return {
+            "message": "Сопоставление подтверждено",
+            "confirmed_id": confirmed.id,
+            "user_confirmed": confirmed.user_confirmed
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Ошибка при подтверждении: {str(e)}")
 
 @app.get("/api/mappings/upload/export/{session_id}")
 async def export_recognition_results(session_id: str):

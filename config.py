@@ -31,4 +31,8 @@ class Config:
         "application/vnd.ms-excel",  # .xls
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # .docx
     ]
+    
+    # AI Settings
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")  # Используем недорогую модель
 

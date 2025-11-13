@@ -75,6 +75,18 @@ class ProductMapping(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+class ConfirmedMapping(Base):
+    """Модель для сохранения подтвержденных сопоставлений"""
+    __tablename__ = "confirmed_mappings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    recognized_text = Column(String, nullable=False, index=True)  # Распознанный текст из файла
+    mapping_id = Column(Integer, nullable=False, index=True)  # ID из product_mappings
+    match_score = Column(Float, nullable=True)  # Процент совпадения
+    user_confirmed = Column(Integer, default=1)  # Количество подтверждений
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 # Создание движка и сессии
 engine = create_async_engine(Config.DATABASE_URL, echo=True)
 async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

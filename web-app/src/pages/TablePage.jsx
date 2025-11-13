@@ -18,6 +18,7 @@ function TablePage() {
   const [selectedMapping, setSelectedMapping] = useState(null)
   const [showModal, setShowModal] = useState(false)
   const [showRecognitionModal, setShowRecognitionModal] = useState(false)
+  const [confirmingIds, setConfirmingIds] = useState(new Set())
   
   // Пагинация
   const [currentPage, setCurrentPage] = useState(1)
@@ -256,6 +257,58 @@ function TablePage() {
       setUploading(false)
     }
   }, [])
+
+  const handleConfirmMapping = async (result) => {
+    if (!result.recognized_text || !result.mapping_id) {
+      alert('Недостаточно данных для подтверждения')
+      return
+    }
+
+    const confirmKey = `${result.recognized_text}_${result.mapping_id}`
+    if (confirmingIds.has(confirmKey)) {
+      return // Уже подтверждается
+    }
+
+    setConfirmingIds(prev => new Set([...prev, confirmKey]))
+
+    try {
+      const response = await axios.post('/api/mappings/confirm', null, {
+        params: {
+          recognized_text: result.recognized_text,
+          mapping_id: result.mapping_id,
+          match_score: result.match_score
+        }
+      })
+
+      alert(`✅ ${response.data.message}\nПодтверждений: ${response.data.user_confirmed}`)
+      
+      // Обновляем результат, помечая его как подтвержденный
+      setRecognitionResults(prev => prev.map(r => 
+        r.recognized_text === result.recognized_text && r.mapping_id === result.mapping_id
+          ? { ...r, is_confirmed: true, match_score: 100.0 }
+          : r
+      ))
+    } catch (err) {
+      let errorMessage = 'Ошибка при подтверждении'
+      
+      if (err.response?.data) {
+        const errorData = err.response.data
+        if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail
+        } else if (errorData.detail?.msg) {
+          errorMessage = errorData.detail.msg
+        }
+      }
+      
+      alert(`❌ ${errorMessage}`)
+    } finally {
+      setConfirmingIds(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(confirmKey)
+        return newSet
+      })
+    }
+  }
 
   const handleExportResults = async () => {
     if (!sessionId) {
@@ -795,15 +848,38 @@ function TablePage() {
                             </span>
                           </div>
                         </div>
-                        <button
-                          className="btn-details"
-                          onClick={() => {
-                            setShowRecognitionModal(false)
-                            openModal(result.mapping, result.match_score)
-                          }}
-                        >
-                          Подробнее
-                        </button>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <button
+                            className="btn-details"
+                            onClick={() => {
+                              setShowRecognitionModal(false)
+                              openModal(result.mapping, result.match_score)
+                            }}
+                          >
+                            Подробнее
+                          </button>
+                          <button
+                            className={`btn-confirm ${result.is_confirmed ? 'confirmed' : ''}`}
+                            onClick={() => handleConfirmMapping(result)}
+                            disabled={confirmingIds.has(`${result.recognized_text}_${result.mapping_id}`) || result.is_confirmed}
+                            style={{
+                              padding: '10px 20px',
+                              background: result.is_confirmed 
+                                ? 'var(--tg-theme-button-color, #3390ec)' 
+                                : 'var(--tg-theme-secondary-bg-color, #f5f5f5)',
+                              color: result.is_confirmed ? 'white' : 'var(--tg-theme-text-color, #000)',
+                              border: result.is_confirmed ? 'none' : '1px solid var(--tg-theme-hint-color, #e0e0e0)',
+                              borderRadius: '6px',
+                              cursor: result.is_confirmed ? 'default' : 'pointer',
+                              fontSize: '14px',
+                              fontWeight: '600',
+                              whiteSpace: 'nowrap',
+                              opacity: confirmingIds.has(`${result.recognized_text}_${result.mapping_id}`) ? 0.6 : 1
+                            }}
+                          >
+                            {result.is_confirmed ? '✓ Подтверждено' : '✓ Подтвердить'}
+                          </button>
+                        </div>
                       </div>
                     ))}
                 </div>
