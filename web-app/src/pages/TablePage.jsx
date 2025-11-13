@@ -15,6 +15,8 @@ function TablePage() {
   const [editingId, setEditingId] = useState(null)
   const [recognitionResults, setRecognitionResults] = useState([])
   const [sessionId, setSessionId] = useState(null)
+  const [selectedMapping, setSelectedMapping] = useState(null)
+  const [showModal, setShowModal] = useState(false)
   
   // Пагинация
   const [currentPage, setCurrentPage] = useState(1)
@@ -60,12 +62,15 @@ function TablePage() {
       })
       
       if (response.data.items) {
-        setMappings(response.data.items)
+        // Фильтруем только записи с артикулом АГБ
+        const filtered = response.data.items.filter(m => m.article_agb && m.article_agb.trim() !== '')
+        setMappings(filtered)
         setTotalItems(response.data.total || 0)
-        console.log(`Загружено записей: ${response.data.items.length} из ${response.data.total}`)
+        console.log(`Загружено записей: ${filtered.length} из ${response.data.total}`)
       } else {
-        setMappings(response.data)
-        setTotalItems(response.data.length)
+        const filtered = response.data.filter(m => m.article_agb && m.article_agb.trim() !== '')
+        setMappings(filtered)
+        setTotalItems(filtered.length)
       }
     } catch (err) {
       console.error('Ошибка загрузки:', err)
@@ -124,8 +129,12 @@ function TablePage() {
           'Content-Type': 'application/json'
         }
       })
-      setSearchResults(response.data)
-      console.log('Найдено результатов:', response.data.length)
+      // Фильтруем только записи с артикулом АГБ
+      const filtered = response.data.filter(item => 
+        item.mapping && item.mapping.article_agb && item.mapping.article_agb.trim() !== ''
+      )
+      setSearchResults(filtered)
+      console.log('Найдено результатов:', filtered.length)
     } catch (err) {
       let errorMessage = 'Ошибка при поиске'
       if (err.response?.data) {
@@ -146,6 +155,16 @@ function TablePage() {
     }
   }
 
+  const openModal = (mapping, matchScore = null) => {
+    setSelectedMapping({ mapping, matchScore })
+    setShowModal(true)
+  }
+
+  const closeModal = () => {
+    setShowModal(false)
+    setSelectedMapping(null)
+  }
+
   const onDrop = useCallback(async (acceptedFiles) => {
     if (acceptedFiles.length === 0) return
 
@@ -163,7 +182,7 @@ function TablePage() {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-        timeout: 300000, // 5 минут для больших файлов
+        timeout: 300000,
       })
 
       setRecognitionResults(response.data.results || [])
@@ -171,13 +190,11 @@ function TablePage() {
       
       alert(`✅ ${response.data.message}\nНайдено совпадений: ${response.data.matches_count}`)
     } catch (err) {
-      // Правильная обработка ошибок FastAPI
       let errorMessage = 'Ошибка при загрузке файла'
       
       if (err.response?.data) {
         const errorData = err.response.data
         
-        // Если это массив ошибок валидации
         if (Array.isArray(errorData.detail)) {
           errorMessage = errorData.detail.map(e => {
             if (typeof e === 'object' && e.msg) {
@@ -185,20 +202,13 @@ function TablePage() {
             }
             return String(e)
           }).join(', ')
-        } 
-        // Если это строка
-        else if (typeof errorData.detail === 'string') {
+        } else if (typeof errorData.detail === 'string') {
           errorMessage = errorData.detail
-        }
-        // Если это объект с сообщением
-        else if (errorData.detail?.msg) {
+        } else if (errorData.detail?.msg) {
           errorMessage = errorData.detail.msg
-        }
-        // Если это просто объект, преобразуем в строку
-        else if (typeof errorData.detail === 'object') {
+        } else if (typeof errorData.detail === 'object') {
           errorMessage = JSON.stringify(errorData.detail)
-        }
-        else {
+        } else {
           errorMessage = String(errorData.detail || errorData.message || errorMessage)
         }
       } else if (err.message) {
@@ -222,7 +232,6 @@ function TablePage() {
         responseType: 'blob',
       })
 
-      // Создаем ссылку для скачивания
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement('a')
       link.href = url
@@ -232,7 +241,6 @@ function TablePage() {
       link.remove()
       window.URL.revokeObjectURL(url)
     } catch (err) {
-      // Правильная обработка ошибок FastAPI
       let errorMessage = 'Ошибка при выгрузке'
       
       if (err.response?.data) {
@@ -296,7 +304,6 @@ function TablePage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     
-    // Валидация обязательных полей
     const requiredFields = ['article_bl', 'article_agb', 'variant_1', 'variant_2', 'variant_3', 
                            'variant_4', 'variant_5', 'variant_6', 'variant_7', 'variant_8', 
                            'unit', 'code', 'nomenclature_agb', 'packaging']
@@ -309,18 +316,18 @@ function TablePage() {
     
     try {
       if (editingId) {
-        // Редактирование
         await axios.put(`/api/mappings/${editingId}`, formData)
         setEditingId(null)
       } else {
-        // Создание
         await axios.post('/api/mappings', formData)
       }
       setShowAddForm(false)
       resetForm()
       await loadMappings()
+      if (showModal) {
+        closeModal()
+      }
     } catch (err) {
-      // Правильная обработка ошибок FastAPI
       let errorMessage = 'Ошибка при сохранении'
       
       if (err.response?.data) {
@@ -369,6 +376,7 @@ function TablePage() {
     })
     setEditingId(mapping.id)
     setShowAddForm(true)
+    closeModal()
   }
 
   const handleCancelEdit = () => {
@@ -390,8 +398,8 @@ function TablePage() {
       if (searchResults.length > 0) {
         handleSearch()
       }
+      closeModal()
     } catch (err) {
-      // Правильная обработка ошибок FastAPI
       let errorMessage = 'Ошибка при удалении'
       
       if (err.response?.data) {
@@ -429,6 +437,7 @@ function TablePage() {
   
   const totalPages = Math.ceil(totalItems / itemsPerPage)
 
+  // Данные для отображения
   const displayData = searchQuery.trim() ? searchResults : mappings.map(m => ({
     mapping: m,
     match_score: null,
@@ -482,7 +491,7 @@ function TablePage() {
 
       {error && <div className="error">❌ {error}</div>}
       {loading && <div className="loading">⏳ Загрузка данных...</div>}
-      {!loading && !error && mappings.length === 0 && (
+      {!loading && !error && mappings.length === 0 && !searchQuery.trim() && (
         <div className="info">ℹ️ Таблица пуста. Загрузите данные через файл или добавьте строку вручную.</div>
       )}
       {!loading && !error && !searchQuery.trim() && totalItems > 0 && (
@@ -685,84 +694,34 @@ function TablePage() {
         </div>
       )}
 
+      {/* Список записей с артикулом АГБ */}
       {displayData.length > 0 && (
-        <div className="table-container">
-          <table className="mapping-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Артикул BL</th>
-                <th>Артикул АГБ</th>
-                <th>Вариант подбора 1</th>
-                <th>Вариант подбора 2</th>
-                <th>Вариант подбора 3</th>
-                <th>Вариант подбора 4</th>
-                <th>Вариант подбора 5</th>
-                <th>Вариант подбора 6</th>
-                <th>Вариант подбора 7</th>
-                <th>Вариант подбора 8</th>
-                <th>Ед.изм.</th>
-                <th>Код</th>
-                <th>Номенклатура АГБ</th>
-                <th>Фасовка для химии, кг.</th>
-                {searchQuery.trim() && <th>Совпадение</th>}
-                <th>Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayData.map((item) => {
-                const m = item.mapping
-                const matchScore = item.match_score !== null && item.match_score !== undefined ? item.match_score : null
-                return (
-                  <tr key={m.id}>
-                    <td>{m.id}</td>
-                    <td>{m.article_bl || '-'}</td>
-                    <td>{m.article_agb || '-'}</td>
-                    <td>{m.variant_1 || '-'}</td>
-                    <td>{m.variant_2 || '-'}</td>
-                    <td>{m.variant_3 || '-'}</td>
-                    <td>{m.variant_4 || '-'}</td>
-                    <td>{m.variant_5 || '-'}</td>
-                    <td>{m.variant_6 || '-'}</td>
-                    <td>{m.variant_7 || '-'}</td>
-                    <td>{m.variant_8 || '-'}</td>
-                    <td>{m.unit || '-'}</td>
-                    <td>{m.code || '-'}</td>
-                    <td>{m.nomenclature_agb || '-'}</td>
-                    <td>{m.packaging || '-'}</td>
-                    {searchQuery.trim() && matchScore !== null && (
-                      <td>
-                        <span className={`match-score score-${Math.floor(matchScore / 25)}`}>
-                          {matchScore.toFixed(1)}%
-                        </span>
-                        {item.matched_fields && item.matched_fields.length > 0 && (
-                          <div className="matched-fields">
-                            {item.matched_fields.join(', ')}
-                          </div>
-                        )}
-                      </td>
+        <div className="mappings-list">
+          {displayData.map((item) => {
+            const m = item.mapping
+            const matchScore = item.match_score !== null && item.match_score !== undefined ? item.match_score : null
+            
+            return (
+              <div key={m.id} className="mapping-item">
+                <div className="mapping-item-content">
+                  <div className="mapping-item-main">
+                    <span className="mapping-article-agb">{m.article_agb || '-'}</span>
+                    {matchScore !== null && (
+                      <span className={`match-score score-${Math.floor(matchScore / 25)}`}>
+                        {matchScore.toFixed(1)}%
+                      </span>
                     )}
-                    <td>
-                      <div className="action-buttons-cell">
-                        <button
-                          className="btn-edit btn-small"
-                          onClick={() => handleEdit(m)}
-                        >
-                          ✏️ Редактировать
-                        </button>
-                        <button
-                          className="btn-danger btn-small"
-                          onClick={() => handleDelete(m.id)}
-                        >
-                          🗑️ Удалить
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                  </div>
+                  <button
+                    className="btn-details"
+                    onClick={() => openModal(m, matchScore)}
+                  >
+                    Подробнее
+                  </button>
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -795,6 +754,102 @@ function TablePage() {
           >
             Следующая →
           </button>
+        </div>
+      )}
+
+      {/* Модальное окно с подробной информацией */}
+      {showModal && selectedMapping && (
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Подробная информация</h2>
+              <button className="modal-close" onClick={closeModal}>×</button>
+            </div>
+            <div className="modal-body">
+              {selectedMapping.matchScore !== null && (
+                <div className="modal-field">
+                  <label>Процент совпадения:</label>
+                  <span className={`match-score score-${Math.floor(selectedMapping.matchScore / 25)}`}>
+                    {selectedMapping.matchScore.toFixed(1)}%
+                  </span>
+                </div>
+              )}
+              <div className="modal-field">
+                <label>ID:</label>
+                <span>{selectedMapping.mapping.id}</span>
+              </div>
+              <div className="modal-field">
+                <label>Артикул BL:</label>
+                <span>{selectedMapping.mapping.article_bl || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Артикул АГБ:</label>
+                <span>{selectedMapping.mapping.article_agb || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Вариант подбора 1:</label>
+                <span>{selectedMapping.mapping.variant_1 || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Вариант подбора 2:</label>
+                <span>{selectedMapping.mapping.variant_2 || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Вариант подбора 3:</label>
+                <span>{selectedMapping.mapping.variant_3 || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Вариант подбора 4:</label>
+                <span>{selectedMapping.mapping.variant_4 || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Вариант подбора 5:</label>
+                <span>{selectedMapping.mapping.variant_5 || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Вариант подбора 6:</label>
+                <span>{selectedMapping.mapping.variant_6 || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Вариант подбора 7:</label>
+                <span>{selectedMapping.mapping.variant_7 || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Вариант подбора 8:</label>
+                <span>{selectedMapping.mapping.variant_8 || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Ед.изм.:</label>
+                <span>{selectedMapping.mapping.unit || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Код:</label>
+                <span>{selectedMapping.mapping.code || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Номенклатура АГБ:</label>
+                <span>{selectedMapping.mapping.nomenclature_agb || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Фасовка для химии, кг.:</label>
+                <span>{selectedMapping.mapping.packaging || '-'}</span>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button
+                className="btn-edit"
+                onClick={() => handleEdit(selectedMapping.mapping)}
+              >
+                ✏️ Редактировать
+              </button>
+              <button
+                className="btn-danger"
+                onClick={() => handleDelete(selectedMapping.mapping.id)}
+              >
+                🗑️ Удалить
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
