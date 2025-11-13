@@ -598,6 +598,64 @@
   font-size: 16px;
 }
 
+/* Модальное окно результатов распознавания */
+.recognition-modal-content {
+  max-width: 700px;
+}
+
+.recognition-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.recognition-result-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+  border-radius: 8px;
+  border: 1px solid var(--tg-theme-hint-color, #e0e0e0);
+  transition: all 0.2s;
+}
+
+.recognition-result-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-color: var(--tg-theme-button-color, #3390ec);
+}
+
+.recognition-result-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.recognition-result-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.recognition-label {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--tg-theme-hint-color, #999999);
+  min-width: 140px;
+}
+
+.recognition-value {
+  font-size: 16px;
+  color: var(--tg-theme-text-color, #000);
+  word-wrap: break-word;
+  flex: 1;
+}
+
 @media (max-width: 768px) {
   .search-input-group {
     flex-direction: column;

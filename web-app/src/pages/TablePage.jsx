@@ -17,6 +17,7 @@ function TablePage() {
   const [sessionId, setSessionId] = useState(null)
   const [selectedMapping, setSelectedMapping] = useState(null)
   const [showModal, setShowModal] = useState(false)
+  const [showRecognitionModal, setShowRecognitionModal] = useState(false)
   
   // Пагинация
   const [currentPage, setCurrentPage] = useState(1)
@@ -185,10 +186,21 @@ function TablePage() {
         timeout: 300000,
       })
 
-      setRecognitionResults(response.data.results || [])
+      const allResults = response.data.results || []
+      // Фильтруем только результаты с совпадением > 80%
+      const filteredResults = allResults.filter(result => 
+        result.match_score && result.match_score > 80 && result.mapping
+      )
+      
+      setRecognitionResults(filteredResults)
       setSessionId(response.data.session_id)
       
-      alert(`✅ ${response.data.message}\nНайдено совпадений: ${response.data.matches_count}`)
+      // Открываем модальное окно с результатами
+      if (filteredResults.length > 0) {
+        setShowRecognitionModal(true)
+      } else {
+        alert(`✅ ${response.data.message}\nНайдено совпадений: ${response.data.matches_count}\nСовпадений > 80%: 0`)
+      }
     } catch (err) {
       let errorMessage = 'Ошибка при загрузке файла'
       
@@ -657,42 +669,6 @@ function TablePage() {
         </div>
       </div>
 
-      {recognitionResults.length > 0 && (
-        <div className="recognition-results">
-          <h3>Результаты распознавания ({recognitionResults.length})</h3>
-          <button className="btn-primary" onClick={handleExportResults}>
-            📥 Выгрузить в Excel
-          </button>
-          <div className="results-table-container">
-            <table className="mapping-table">
-              <thead>
-                <tr>
-                  <th>Распознанный текст</th>
-                  <th>Процент совпадения</th>
-                  <th>Артикул АГБ</th>
-                  <th>Номенклатура АГБ</th>
-                  <th>Код</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recognitionResults.map((result, idx) => (
-                  <tr key={idx}>
-                    <td>{result.recognized_text}</td>
-                    <td>
-                      <span className={`match-score score-${Math.floor(result.match_score / 25)}`}>
-                        {result.match_score}%
-                      </span>
-                    </td>
-                    <td>{result.mapping?.article_agb || '-'}</td>
-                    <td>{result.mapping?.nomenclature_agb || '-'}</td>
-                    <td>{result.mapping?.code || '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* Список записей с артикулом АГБ */}
       {displayData.length > 0 && (
@@ -754,6 +730,56 @@ function TablePage() {
           >
             Следующая →
           </button>
+        </div>
+      )}
+
+      {/* Модальное окно с результатами распознавания */}
+      {showRecognitionModal && recognitionResults.length > 0 && (
+        <div className="modal-overlay" onClick={() => setShowRecognitionModal(false)}>
+          <div className="modal-content recognition-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Результаты обработки файла ({recognitionResults.length})</h2>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button className="btn-primary" onClick={handleExportResults} style={{ margin: 0 }}>
+                  📥 Выгрузить в Excel
+                </button>
+                <button className="modal-close" onClick={() => setShowRecognitionModal(false)}>×</button>
+              </div>
+            </div>
+            <div className="modal-body">
+              <div className="recognition-results-list">
+                {recognitionResults.map((result, idx) => (
+                  <div key={idx} className="recognition-result-item">
+                    <div className="recognition-result-main">
+                      <div className="recognition-result-row">
+                        <span className="recognition-label">Артикул АГБ:</span>
+                        <span className="recognition-value">{result.mapping?.article_agb || '-'}</span>
+                      </div>
+                      <div className="recognition-result-row">
+                        <span className="recognition-label">Номенклатура АГБ:</span>
+                        <span className="recognition-value">{result.mapping?.nomenclature_agb || '-'}</span>
+                      </div>
+                      <div className="recognition-result-row">
+                        <span className="recognition-label">Совпадение:</span>
+                        <span className={`match-score score-${Math.floor(result.match_score / 25)}`}>
+                          {result.match_score.toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      className="btn-details"
+                      onClick={() => {
+                        setShowRecognitionModal(false)
+                        openModal(result.mapping, result.match_score)
+                      }}
+                    >
+                      Подробнее
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
