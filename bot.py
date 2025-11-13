@@ -71,7 +71,10 @@ async def cmd_help(message: Message):
 @dp.message(Command("web"))
 async def cmd_web(message: Message):
     """Открытие веб-интерфейса"""
-    webapp_url = f"{Config.WEB_APP_URL}?user_id={message.from_user.id}"
+    import time
+    # Добавляем timestamp для предотвращения кэширования
+    timestamp = int(time.time())
+    webapp_url = f"{Config.WEB_APP_URL}?user_id={message.from_user.id}&v={timestamp}"
     
     # Используем ReplyKeyboardMarkup с WebApp кнопкой
     keyboard = types.ReplyKeyboardMarkup(
