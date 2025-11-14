@@ -154,6 +154,83 @@
 }
 
 /* Модальное окно результатов распознавания */
+.recognition-results-table-container {
+  max-height: 60vh;
+  overflow-y: auto;
+  overflow-x: auto;
+  margin: -20px;
+  padding: 20px;
+}
+
+.recognition-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.recognition-results-table thead {
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.recognition-results-table th {
+  padding: 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--tg-theme-text-color, #000);
+  border-bottom: 2px solid var(--tg-theme-hint-color, #e0e0e0);
+  white-space: nowrap;
+}
+
+.recognition-results-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--tg-theme-hint-color, #e0e0e0);
+  vertical-align: top;
+}
+
+.recognition-results-table tbody tr:hover {
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+}
+
+.recognition-results-table tbody tr.has-match {
+  background: rgba(51, 144, 236, 0.05);
+}
+
+.recognition-results-table tbody tr.no-match {
+  background: rgba(255, 0, 0, 0.02);
+}
+
+.recognition-results-table .search-text {
+  font-weight: 500;
+  color: var(--tg-theme-text-color, #000);
+  word-break: break-word;
+  max-width: 200px;
+}
+
+.recognition-results-table .found-text {
+  color: var(--tg-theme-text-color, #000);
+  word-break: break-word;
+  max-width: 250px;
+}
+
+.recognition-results-table .no-match-text {
+  color: var(--tg-theme-hint-color, #999999);
+  font-style: italic;
+}
+
+.recognition-results-table .match-score-cell {
+  text-align: center;
+  min-width: 80px;
+}
+
+.recognition-results-table .actions-cell {
+  min-width: 120px;
+  text-align: center;
+}
+
 .recognition-results-list {
   display: flex;
   flex-direction: column;

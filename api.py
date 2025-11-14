@@ -848,7 +848,9 @@ async def upload_mapping_file(
         all_mappings = result.scalars().all()
         
         # Результаты распознавания и сопоставления
+        # Включаем все обработанные строки, даже если ничего не найдено
         recognition_results = []
+        all_processed_items = []  # Все обработанные элементы для отчета
         
         # Если это Excel файл - используем интеллектуальный анализ структуры
         if file.content_type in [
@@ -908,6 +910,18 @@ async def upload_mapping_file(
                         
                         if not search_value or len(search_value) < 2:
                             continue
+                        
+                        # Сохраняем что искали
+                        processed_item = {
+                            'recognized_text': search_value,
+                            'mapping_id': None,
+                            'match_score': None,
+                            'matched_field': None,
+                            'matched_value': None,
+                            'mapping': None,
+                            'is_ai_match': False,
+                            'is_confirmed': False
+                        }
                         
                         # Ищем совпадения
                         best_match = None
@@ -993,9 +1007,16 @@ async def upload_mapping_file(
                                                 }
                                             }
                         
-                        # Добавляем результат если есть совпадение
+                        # Обновляем processed_item с результатом поиска
                         if best_match:
+                            processed_item.update(best_match)
                             recognition_results.append(best_match)
+                        else:
+                            # Если ничего не найдено, все равно добавляем в список
+                            processed_item['matched_value'] = 'Не найдено'
+                        
+                        # Добавляем в общий список всех обработанных элементов
+                        all_processed_items.append(processed_item)
                 
             except Exception as e:
                 print(f"Ошибка при обработке Excel: {e}")
@@ -1022,6 +1043,18 @@ async def upload_mapping_file(
             for line in lines:
                 if not line or len(line) < 2:
                     continue
+                
+                # Сохраняем что искали
+                processed_item = {
+                    'recognized_text': line,
+                    'mapping_id': None,
+                    'match_score': None,
+                    'matched_field': None,
+                    'matched_value': None,
+                    'mapping': None,
+                    'is_ai_match': False,
+                    'is_confirmed': False
+                }
                 
                 best_match = None
                 best_score = 0.0
@@ -1108,9 +1141,16 @@ async def upload_mapping_file(
                                         }
                                     }
                 
-                # Добавляем результат если есть совпадение
+                # Обновляем processed_item с результатом поиска
                 if best_match:
+                    processed_item.update(best_match)
                     recognition_results.append(best_match)
+                else:
+                    # Если ничего не найдено, все равно добавляем в список
+                    processed_item['matched_value'] = 'Не найдено'
+                
+                # Добавляем в общий список всех обработанных элементов
+                all_processed_items.append(processed_item)
         
         # Сохраняем результаты в сессию (можно использовать Redis или БД)
         # Пока сохраняем в файл временно
@@ -1118,15 +1158,15 @@ async def upload_mapping_file(
         results_file = os.path.join(Config.TEMP_DIR, f"results_{session_id}.json")
         os.makedirs(Config.TEMP_DIR, exist_ok=True)
         with open(results_file, 'w', encoding='utf-8') as f:
-            json.dump(recognition_results, f, ensure_ascii=False, indent=2)
+            json.dump(all_processed_items, f, ensure_ascii=False, indent=2)
         
-        recognized_count = len(lines) if 'lines' in locals() else len(recognition_results)
+        recognized_count = len(all_processed_items)
         
         return {
-            "message": f"Обработано файл, найдено {len(recognition_results)} совпадений",
+            "message": f"Обработано {recognized_count} строк, найдено {len(recognition_results)} совпадений",
             "recognized_count": recognized_count,
             "matches_count": len(recognition_results),
-            "results": recognition_results[:50],  # Первые 50 результатов
+            "results": all_processed_items,  # Возвращаем все результаты, включая "не найдено"
             "session_id": session_id
         }
         

@@ -39,31 +39,17 @@ function UploadPage({ userId }) {
       console.log('Все результаты:', allResults)
       console.log('Количество результатов:', allResults.length)
       
-      // Фильтруем только результаты с совпадением > 80%
-      const filteredResults = allResults.filter(result => {
-        const hasMapping = result.mapping && typeof result.mapping === 'object'
-        const hasScore = result.match_score !== null && result.match_score !== undefined
-        const scoreAbove80 = hasScore && result.match_score > 80
-        return hasMapping && hasScore && scoreAbove80
-      })
-      
-      console.log('Отфильтрованные результаты (> 80%):', filteredResults)
-      console.log('Количество отфильтрованных:', filteredResults.length)
-      
-      setRecognitionResults(filteredResults)
+      // Сохраняем все результаты (включая "не найдено")
+      setRecognitionResults(allResults)
       setSessionId(response.data.session_id)
       
       // Всегда открываем модальное окно, если есть результаты
-      if (filteredResults.length > 0) {
-        console.log('Открываю модальное окно с результатами > 80%')
-        setShowRecognitionModal(true)
-      } else if (allResults.length > 0) {
-        // Если есть результаты, но все < 80%, все равно показываем модальное окно
-        console.log('Есть результаты, но все < 80%. Показываю пустое модальное окно')
+      if (allResults.length > 0) {
+        console.log('Открываю модальное окно со всеми результатами')
         setShowRecognitionModal(true)
       } else {
         // Нет результатов вообще
-        const message = `✅ ${response.data.message}\nНайдено совпадений: ${response.data.matches_count}`
+        const message = `✅ ${response.data.message}\nОбработано строк: ${response.data.recognized_count}`
         console.log('Нет результатов, показываю alert:', message)
         alert(message)
       }
@@ -245,68 +231,82 @@ function UploadPage({ userId }) {
             </div>
             <div className="modal-body">
               {recognitionResults.length > 0 ? (
-                <div className="recognition-results-list">
-                  {recognitionResults
-                    .filter(result => result.match_score && result.match_score > 80 && result.mapping)
-                    .map((result, idx) => (
-                      <div key={idx} className="recognition-result-item">
-                        <div className="recognition-result-main">
-                          <div className="recognition-result-row">
-                            <span className="recognition-label">Артикул АГБ:</span>
-                            <span className="recognition-value">{result.mapping?.article_agb || '-'}</span>
-                          </div>
-                          <div className="recognition-result-row">
-                            <span className="recognition-label">Номенклатура АГБ:</span>
-                            <span className="recognition-value">{result.mapping?.nomenclature_agb || '-'}</span>
-                          </div>
-                          <div className="recognition-result-row">
-                            <span className="recognition-label">Совпадение:</span>
-                            <span className={`match-score score-${Math.floor((result.match_score || 0) / 25)}`}>
-                              {result.match_score ? result.match_score.toFixed(1) : '0'}%
-                            </span>
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          <button
-                            className="btn-details"
-                            onClick={() => {
-                              setShowRecognitionModal(false)
-                              openModal(result.mapping, result.match_score)
-                            }}
-                          >
-                            Подробнее
-                          </button>
-                          <button
-                            className={`btn-confirm ${result.is_confirmed ? 'confirmed' : ''}`}
-                            onClick={() => handleConfirmMapping(result)}
-                            disabled={confirmingIds.has(`${result.recognized_text}_${result.mapping_id}`) || result.is_confirmed}
-                            style={{
-                              padding: '10px 20px',
-                              background: result.is_confirmed 
-                                ? 'var(--tg-theme-button-color, #3390ec)' 
-                                : 'var(--tg-theme-secondary-bg-color, #f5f5f5)',
-                              color: result.is_confirmed ? 'white' : 'var(--tg-theme-text-color, #000)',
-                              border: result.is_confirmed ? 'none' : '1px solid var(--tg-theme-hint-color, #e0e0e0)',
-                              borderRadius: '6px',
-                              cursor: result.is_confirmed ? 'default' : 'pointer',
-                              fontSize: '14px',
-                              fontWeight: '600',
-                              whiteSpace: 'nowrap',
-                              opacity: confirmingIds.has(`${result.recognized_text}_${result.mapping_id}`) ? 0.6 : 1
-                            }}
-                          >
-                            {result.is_confirmed ? '✓ Подтверждено' : '✓ Подтвердить'}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                <div className="recognition-results-table-container">
+                  <table className="recognition-results-table">
+                    <thead>
+                      <tr>
+                        <th>Что искалось</th>
+                        <th>Что найдено</th>
+                        <th>Совпадение</th>
+                        <th>Действия</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recognitionResults.map((result, idx) => {
+                        const hasMatch = result.mapping && result.match_score !== null && result.match_score !== undefined
+                        const foundText = hasMatch 
+                          ? `${result.mapping.article_agb || '-'} / ${result.mapping.nomenclature_agb || '-'}`
+                          : 'Не найдено'
+                        
+                        return (
+                          <tr key={idx} className={hasMatch ? 'has-match' : 'no-match'}>
+                            <td className="search-text">{result.recognized_text || '-'}</td>
+                            <td className="found-text">{foundText}</td>
+                            <td className="match-score-cell">
+                              {hasMatch ? (
+                                <span className={`match-score score-${Math.floor((result.match_score || 0) / 25)}`}>
+                                  {result.match_score.toFixed(1)}%
+                                </span>
+                              ) : (
+                                <span className="no-match-text">-</span>
+                              )}
+                            </td>
+                            <td className="actions-cell">
+                              {hasMatch && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                  <button
+                                    className="btn-details"
+                                    onClick={() => {
+                                      setShowRecognitionModal(false)
+                                      openModal(result.mapping, result.match_score)
+                                    }}
+                                    style={{ fontSize: '12px', padding: '6px 12px' }}
+                                  >
+                                    Подробнее
+                                  </button>
+                                  <button
+                                    className={`btn-confirm ${result.is_confirmed ? 'confirmed' : ''}`}
+                                    onClick={() => handleConfirmMapping(result)}
+                                    disabled={confirmingIds.has(`${result.recognized_text}_${result.mapping_id}`) || result.is_confirmed}
+                                    style={{
+                                      fontSize: '12px',
+                                      padding: '6px 12px',
+                                      background: result.is_confirmed 
+                                        ? 'var(--tg-theme-button-color, #3390ec)' 
+                                        : 'var(--tg-theme-secondary-bg-color, #f5f5f5)',
+                                      color: result.is_confirmed ? 'white' : 'var(--tg-theme-text-color, #000)',
+                                      border: result.is_confirmed ? 'none' : '1px solid var(--tg-theme-hint-color, #e0e0e0)',
+                                      borderRadius: '6px',
+                                      cursor: result.is_confirmed ? 'default' : 'pointer',
+                                      fontWeight: '600',
+                                      whiteSpace: 'nowrap',
+                                      opacity: confirmingIds.has(`${result.recognized_text}_${result.mapping_id}`) ? 0.6 : 1
+                                    }}
+                                  >
+                                    {result.is_confirmed ? '✓ Подтверждено' : '✓ Подтвердить'}
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               ) : (
                 <div className="empty-state">
-                  <p>Нет результатов с совпадением более 80%</p>
-                  <p style={{ fontSize: '14px', color: 'var(--tg-theme-hint-color, #999999)', marginTop: '8px' }}>
-                    Попробуйте загрузить другой файл или проверьте данные в таблице соответствий.
-                  </p>
+                  <p>Нет результатов обработки</p>
                 </div>
               )}
             </div>
