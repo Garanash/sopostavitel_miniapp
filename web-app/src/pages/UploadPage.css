@@ -57,3 +57,233 @@
   }
 }
 
+/* Модальное окно */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal-content {
+  background: var(--tg-theme-bg-color, #ffffff);
+  border-radius: 12px;
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.recognition-modal-content {
+  max-width: 700px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid var(--tg-theme-hint-color, #e0e0e0);
+  position: sticky;
+  top: 0;
+  background: var(--tg-theme-bg-color, #ffffff);
+  z-index: 10;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 32px;
+  cursor: pointer;
+  color: var(--tg-theme-text-color, #000);
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.modal-close:hover {
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--tg-theme-hint-color, #e0e0e0);
+}
+
+.modal-field:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.modal-field label {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--tg-theme-hint-color, #999999);
+}
+
+.modal-field span {
+  font-size: 16px;
+  color: var(--tg-theme-text-color, #000);
+  word-wrap: break-word;
+}
+
+/* Модальное окно результатов распознавания */
+.recognition-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.recognition-result-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+  border-radius: 8px;
+  border: 1px solid var(--tg-theme-hint-color, #e0e0e0);
+  transition: all 0.2s;
+}
+
+.recognition-result-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-color: var(--tg-theme-button-color, #3390ec);
+}
+
+.recognition-result-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.recognition-result-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.recognition-label {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--tg-theme-hint-color, #999999);
+  min-width: 140px;
+}
+
+.recognition-value {
+  font-size: 16px;
+  color: var(--tg-theme-text-color, #000);
+  word-wrap: break-word;
+  flex: 1;
+}
+
+.btn-details {
+  padding: 10px 20px;
+  background: var(--tg-theme-button-color, #3390ec);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.btn-details:hover {
+  opacity: 0.9;
+}
+
+.btn-confirm {
+  padding: 10px 20px;
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+  color: var(--tg-theme-text-color, #000);
+  border: 1px solid var(--tg-theme-hint-color, #e0e0e0);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.btn-confirm.confirmed {
+  background: var(--tg-theme-button-color, #3390ec);
+  color: white;
+  border: none;
+}
+
+.btn-confirm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.match-score {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.match-score.score-0 {
+  background: #ef4444;
+  color: white;
+}
+
+.match-score.score-1 {
+  background: #f59e0b;
+  color: white;
+}
+
+.match-score.score-2,
+.match-score.score-3,
+.match-score.score-4 {
+  background: #10b981;
+  color: white;
+}
+
+.empty-state {
+  padding: 40px;
+  text-align: center;
+  color: var(--tg-theme-hint-color, #999999);
+}
+
+.error {
+  padding: 12px;
+  background: #fee;
+  border: 1px solid #fcc;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  color: #c00;
+  font-size: 14px;
+}
+

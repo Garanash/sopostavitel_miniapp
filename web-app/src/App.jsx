@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
-import ArticlesPage from './pages/ArticlesPage'
+import ArticleSearchPage from './pages/ArticleSearchPage'
 import UploadPage from './pages/UploadPage'
 import TablePage from './pages/TablePage'
 import './App.css'
@@ -77,13 +77,13 @@ function App() {
             className={`tab ${activeTab === 'upload' ? 'active' : ''}`}
             onClick={() => setActiveTab('upload')}
           >
-            📤 Загрузить
+            📄 Файл
           </button>
           <button
             className={`tab ${activeTab === 'articles' ? 'active' : ''}`}
             onClick={() => setActiveTab('articles')}
           >
-            📦 Артикулы
+            🔍 Артикул
           </button>
           <button
             className={`tab ${activeTab === 'table' ? 'active' : ''}`}
@@ -94,7 +94,7 @@ function App() {
         </div>
 
         {activeTab === 'upload' && <UploadPage userId={userId} />}
-        {activeTab === 'articles' && <ArticlesPage />}
+        {activeTab === 'articles' && <ArticleSearchPage />}
         {activeTab === 'table' && <TablePage />}
       </div>
     </div>

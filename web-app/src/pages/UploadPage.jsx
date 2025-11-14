@@ -7,38 +7,178 @@ function UploadPage({ userId }) {
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
+  const [recognitionResults, setRecognitionResults] = useState([])
+  const [sessionId, setSessionId] = useState(null)
+  const [showRecognitionModal, setShowRecognitionModal] = useState(false)
+  const [confirmingIds, setConfirmingIds] = useState(new Set())
+  const [selectedMapping, setSelectedMapping] = useState(null)
+  const [showModal, setShowModal] = useState(false)
 
   const onDrop = useCallback(async (acceptedFiles) => {
-    if (!userId) {
-      setError('Не указан ID пользователя')
-      return
-    }
-
     if (acceptedFiles.length === 0) return
 
     const file = acceptedFiles[0]
     setUploading(true)
     setError(null)
     setResult(null)
+    setRecognitionResults([])
+    setSessionId(null)
 
     try {
       const formData = new FormData()
       formData.append('file', file)
-      formData.append('user_id', userId)
 
-      const response = await axios.post('/api/files/upload', formData, {
+      const response = await axios.post('/api/mappings/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
+        timeout: 300000,
       })
 
-      setResult(response.data)
+      const allResults = response.data.results || []
+      console.log('Все результаты:', allResults)
+      console.log('Количество результатов:', allResults.length)
+      
+      // Фильтруем только результаты с совпадением > 80%
+      const filteredResults = allResults.filter(result => {
+        const hasMapping = result.mapping && typeof result.mapping === 'object'
+        const hasScore = result.match_score !== null && result.match_score !== undefined
+        const scoreAbove80 = hasScore && result.match_score > 80
+        return hasMapping && hasScore && scoreAbove80
+      })
+      
+      console.log('Отфильтрованные результаты (> 80%):', filteredResults)
+      console.log('Количество отфильтрованных:', filteredResults.length)
+      
+      setRecognitionResults(filteredResults)
+      setSessionId(response.data.session_id)
+      
+      // Всегда открываем модальное окно, если есть результаты
+      if (filteredResults.length > 0) {
+        console.log('Открываю модальное окно с результатами > 80%')
+        setShowRecognitionModal(true)
+      } else if (allResults.length > 0) {
+        // Если есть результаты, но все < 80%, все равно показываем модальное окно
+        console.log('Есть результаты, но все < 80%. Показываю пустое модальное окно')
+        setShowRecognitionModal(true)
+      } else {
+        // Нет результатов вообще
+        const message = `✅ ${response.data.message}\nНайдено совпадений: ${response.data.matches_count}`
+        console.log('Нет результатов, показываю alert:', message)
+        alert(message)
+      }
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Ошибка при загрузке файла')
+      let errorMessage = 'Ошибка при загрузке файла'
+      
+      if (err.response?.data) {
+        const errorData = err.response.data
+        
+        if (Array.isArray(errorData.detail)) {
+          errorMessage = errorData.detail.map(e => {
+            if (typeof e === 'object' && e.msg) {
+              return `${e.loc?.join('.') || ''}: ${e.msg}`
+            }
+            return String(e)
+          }).join(', ')
+        } else if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail
+        } else if (errorData.detail?.msg) {
+          errorMessage = errorData.detail.msg
+        } else if (typeof errorData.detail === 'object') {
+          errorMessage = JSON.stringify(errorData.detail)
+        } else {
+          errorMessage = String(errorData.detail || errorData.message || errorMessage)
+        }
+      } else if (err.message) {
+        errorMessage = err.message
+      }
+      
+      setError(errorMessage)
     } finally {
       setUploading(false)
     }
-  }, [userId])
+  }, [])
+
+  const handleConfirmMapping = async (result) => {
+    if (!result.recognized_text || !result.mapping_id) {
+      alert('Недостаточно данных для подтверждения')
+      return
+    }
+
+    const confirmKey = `${result.recognized_text}_${result.mapping_id}`
+    if (confirmingIds.has(confirmKey)) {
+      return // Уже подтверждается
+    }
+
+    setConfirmingIds(prev => new Set([...prev, confirmKey]))
+
+    try {
+      const response = await axios.post('/api/mappings/confirm', null, {
+        params: {
+          recognized_text: result.recognized_text,
+          mapping_id: result.mapping_id,
+          match_score: result.match_score
+        }
+      })
+
+      alert(`✅ ${response.data.message}\nПодтверждений: ${response.data.user_confirmed}`)
+      
+      // Обновляем результат, помечая его как подтвержденный
+      setRecognitionResults(prev => prev.map(r => 
+        r.recognized_text === result.recognized_text && r.mapping_id === result.mapping_id
+          ? { ...r, is_confirmed: true, match_score: 100.0 }
+          : r
+      ))
+    } catch (err) {
+      let errorMessage = 'Ошибка при подтверждении'
+      
+      if (err.response?.data) {
+        const errorData = err.response.data
+        if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail
+        } else if (errorData.detail?.msg) {
+          errorMessage = errorData.detail.msg
+        }
+      }
+      
+      alert(`❌ ${errorMessage}`)
+    } finally {
+      setConfirmingIds(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(confirmKey)
+        return newSet
+      })
+    }
+  }
+
+  const handleExportResults = async () => {
+    if (!sessionId) {
+      alert('Нет результатов для выгрузки')
+      return
+    }
+
+    try {
+      const response = await axios.get(`/api/mappings/export/${sessionId}`, {
+        responseType: 'blob'
+      })
+
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `results_${sessionId}.xlsx`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      alert('Ошибка при выгрузке файла: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
+  const openModal = (mapping, matchScore = null) => {
+    setSelectedMapping({ mapping, matchScore })
+    setShowModal(true)
+  }
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -86,51 +226,175 @@ function UploadPage({ userId }) {
         </div>
 
         {error && <div className="error">{error}</div>}
+      </div>
 
-        {result && (
-          <div className="upload-result">
-            <div className="success">
-              ✅ Файл успешно обработан!
+      {/* Модальное окно с результатами распознавания */}
+      {showRecognitionModal && (
+        <div className="modal-overlay" onClick={() => setShowRecognitionModal(false)}>
+          <div className="modal-content recognition-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Результаты обработки файла ({recognitionResults.length})</h2>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {recognitionResults.length > 0 && sessionId && (
+                  <button className="btn-primary" onClick={handleExportResults} style={{ margin: 0 }}>
+                    📥 Выгрузить в Excel
+                  </button>
+                )}
+                <button className="modal-close" onClick={() => setShowRecognitionModal(false)}>×</button>
+              </div>
             </div>
-            <div className="result-info">
-              <h3>Результаты:</h3>
-              <p className="matches-count">
-                Найдено совпадений: <strong>{result.matches_count}</strong>
-              </p>
-
-              {result.matches && result.matches.length > 0 && (
-                <div className="matches-list">
-                  <h4>Найденные артикулы:</h4>
-                  {result.matches.map((match, index) => (
-                    <div key={index} className="match-item">
-                      <div className="match-item-header">
-                        <span className="match-item-title">{match.article}</span>
-                        <span
-                          className="match-item-confidence"
-                          style={{
-                            background:
-                              match.confidence > 0.8
-                                ? '#10b981'
-                                : match.confidence > 0.5
-                                ? '#f59e0b'
-                                : '#ef4444',
-                            color: 'white',
-                          }}
-                        >
-                          {Math.round(match.confidence * 100)}%
-                        </span>
+            <div className="modal-body">
+              {recognitionResults.length > 0 ? (
+                <div className="recognition-results-list">
+                  {recognitionResults
+                    .filter(result => result.match_score && result.match_score > 80 && result.mapping)
+                    .map((result, idx) => (
+                      <div key={idx} className="recognition-result-item">
+                        <div className="recognition-result-main">
+                          <div className="recognition-result-row">
+                            <span className="recognition-label">Артикул АГБ:</span>
+                            <span className="recognition-value">{result.mapping?.article_agb || '-'}</span>
+                          </div>
+                          <div className="recognition-result-row">
+                            <span className="recognition-label">Номенклатура АГБ:</span>
+                            <span className="recognition-value">{result.mapping?.nomenclature_agb || '-'}</span>
+                          </div>
+                          <div className="recognition-result-row">
+                            <span className="recognition-label">Совпадение:</span>
+                            <span className={`match-score score-${Math.floor((result.match_score || 0) / 25)}`}>
+                              {result.match_score ? result.match_score.toFixed(1) : '0'}%
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <button
+                            className="btn-details"
+                            onClick={() => {
+                              setShowRecognitionModal(false)
+                              openModal(result.mapping, result.match_score)
+                            }}
+                          >
+                            Подробнее
+                          </button>
+                          <button
+                            className={`btn-confirm ${result.is_confirmed ? 'confirmed' : ''}`}
+                            onClick={() => handleConfirmMapping(result)}
+                            disabled={confirmingIds.has(`${result.recognized_text}_${result.mapping_id}`) || result.is_confirmed}
+                            style={{
+                              padding: '10px 20px',
+                              background: result.is_confirmed 
+                                ? 'var(--tg-theme-button-color, #3390ec)' 
+                                : 'var(--tg-theme-secondary-bg-color, #f5f5f5)',
+                              color: result.is_confirmed ? 'white' : 'var(--tg-theme-text-color, #000)',
+                              border: result.is_confirmed ? 'none' : '1px solid var(--tg-theme-hint-color, #e0e0e0)',
+                              borderRadius: '6px',
+                              cursor: result.is_confirmed ? 'default' : 'pointer',
+                              fontSize: '14px',
+                              fontWeight: '600',
+                              whiteSpace: 'nowrap',
+                              opacity: confirmingIds.has(`${result.recognized_text}_${result.mapping_id}`) ? 0.6 : 1
+                            }}
+                          >
+                            {result.is_confirmed ? '✓ Подтверждено' : '✓ Подтвердить'}
+                          </button>
+                        </div>
                       </div>
-                      <div className="match-item-text">
-                        {match.found_text}
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <p>Нет результатов с совпадением более 80%</p>
+                  <p style={{ fontSize: '14px', color: 'var(--tg-theme-hint-color, #999999)', marginTop: '8px' }}>
+                    Попробуйте загрузить другой файл или проверьте данные в таблице соответствий.
+                  </p>
                 </div>
               )}
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Модальное окно с подробной информацией */}
+      {showModal && selectedMapping && (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Подробная информация</h2>
+              <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              {selectedMapping.matchScore !== null && (
+                <div className="modal-field">
+                  <label>Процент совпадения:</label>
+                  <span className={`match-score score-${Math.floor(selectedMapping.matchScore / 25)}`}>
+                    {selectedMapping.matchScore.toFixed(1)}%
+                  </span>
+                </div>
+              )}
+              <div className="modal-field">
+                <label>ID:</label>
+                <span>{selectedMapping.mapping.id}</span>
+              </div>
+              <div className="modal-field">
+                <label>Артикул BL:</label>
+                <span>{selectedMapping.mapping.article_bl || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Артикул АГБ:</label>
+                <span>{selectedMapping.mapping.article_agb || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Вариант подбора 1:</label>
+                <span>{selectedMapping.mapping.variant_1 || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Вариант подбора 2:</label>
+                <span>{selectedMapping.mapping.variant_2 || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Вариант подбора 3:</label>
+                <span>{selectedMapping.mapping.variant_3 || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Вариант подбора 4:</label>
+                <span>{selectedMapping.mapping.variant_4 || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Вариант подбора 5:</label>
+                <span>{selectedMapping.mapping.variant_5 || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Вариант подбора 6:</label>
+                <span>{selectedMapping.mapping.variant_6 || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Вариант подбора 7:</label>
+                <span>{selectedMapping.mapping.variant_7 || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Вариант подбора 8:</label>
+                <span>{selectedMapping.mapping.variant_8 || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Ед.изм.:</label>
+                <span>{selectedMapping.mapping.unit || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Код:</label>
+                <span>{selectedMapping.mapping.code || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Номенклатура АГБ:</label>
+                <span>{selectedMapping.mapping.nomenclature_agb || '-'}</span>
+              </div>
+              <div className="modal-field">
+                <label>Фасовка для химии, кг.:</label>
+                <span>{selectedMapping.mapping.packaging || '-'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

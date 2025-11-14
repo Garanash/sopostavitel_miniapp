@@ -1,24 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect } from 'react'
 import axios from 'axios'
-import { useDropzone } from 'react-dropzone'
 import './TablePage.css'
 
 function TablePage() {
   const [mappings, setMappings] = useState([])
-  const [searchResults, setSearchResults] = useState([])
-  const [searchQuery, setSearchQuery] = useState('')
-  const [minScore, setMinScore] = useState(50)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [uploading, setUploading] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
-  const [recognitionResults, setRecognitionResults] = useState([])
-  const [sessionId, setSessionId] = useState(null)
   const [selectedMapping, setSelectedMapping] = useState(null)
   const [showModal, setShowModal] = useState(false)
-  const [showRecognitionModal, setShowRecognitionModal] = useState(false)
-  const [confirmingIds, setConfirmingIds] = useState(new Set())
   
   // Пагинация
   const [currentPage, setCurrentPage] = useState(1)
@@ -111,52 +102,6 @@ function TablePage() {
     }
   }
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      setSearchResults([])
-      return
-    }
-
-    try {
-      setLoading(true)
-      setError(null)
-      const response = await axios.get('/api/mappings/search', {
-        params: {
-          query: searchQuery,
-          min_score: minScore,
-          limit: 50
-        },
-        timeout: 30000,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      })
-      // Фильтруем только записи с артикулом АГБ
-      const filtered = response.data.filter(item => 
-        item.mapping && item.mapping.article_agb && item.mapping.article_agb.trim() !== ''
-      )
-      setSearchResults(filtered)
-      console.log('Найдено результатов:', filtered.length)
-    } catch (err) {
-      let errorMessage = 'Ошибка при поиске'
-      if (err.response?.data) {
-        if (Array.isArray(err.response.data.detail)) {
-          errorMessage = err.response.data.detail.map(d => d.msg || d).join(', ')
-        } else if (typeof err.response.data.detail === 'string') {
-          errorMessage = err.response.data.detail
-        } else if (err.response.data.detail) {
-          errorMessage = JSON.stringify(err.response.data.detail)
-        }
-      } else if (err.message) {
-        errorMessage = err.message
-      }
-      setError(errorMessage)
-      setSearchResults([])
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const openModal = (mapping, matchScore = null) => {
     setSelectedMapping({ mapping, matchScore })
     setShowModal(true)
@@ -166,210 +111,6 @@ function TablePage() {
     setShowModal(false)
     setSelectedMapping(null)
   }
-
-  const onDrop = useCallback(async (acceptedFiles) => {
-    if (acceptedFiles.length === 0) return
-
-    const file = acceptedFiles[0]
-    setUploading(true)
-    setError(null)
-    setRecognitionResults([])
-    setSessionId(null)
-
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const response = await axios.post('/api/mappings/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        timeout: 300000,
-      })
-
-      const allResults = response.data.results || []
-      console.log('Все результаты:', allResults)
-      console.log('Количество результатов:', allResults.length)
-      
-      // Фильтруем только результаты с совпадением > 80%
-      const filteredResults = allResults.filter(result => {
-        const hasMapping = result.mapping && typeof result.mapping === 'object'
-        const hasScore = result.match_score !== null && result.match_score !== undefined
-        const scoreAbove80 = hasScore && result.match_score > 80
-        console.log('Результат:', { 
-          match_score: result.match_score, 
-          hasMapping, 
-          hasScore, 
-          scoreAbove80 
-        })
-        return hasMapping && hasScore && scoreAbove80
-      })
-      
-      console.log('Отфильтрованные результаты (> 80%):', filteredResults)
-      console.log('Количество отфильтрованных:', filteredResults.length)
-      
-      setRecognitionResults(filteredResults)
-      setSessionId(response.data.session_id)
-      
-      // Всегда открываем модальное окно, если есть результаты
-      // Но показываем только те, что > 80%
-      if (filteredResults.length > 0) {
-        console.log('Открываю модальное окно с результатами > 80%')
-        setShowRecognitionModal(true)
-      } else if (allResults.length > 0) {
-        // Если есть результаты, но все < 80%, все равно показываем модальное окно
-        console.log('Есть результаты, но все < 80%. Показываю пустое модальное окно')
-        setShowRecognitionModal(true)
-      } else {
-        // Нет результатов вообще
-        const message = `✅ ${response.data.message}\nНайдено совпадений: ${response.data.matches_count}`
-        console.log('Нет результатов, показываю alert:', message)
-        alert(message)
-      }
-    } catch (err) {
-      let errorMessage = 'Ошибка при загрузке файла'
-      
-      if (err.response?.data) {
-        const errorData = err.response.data
-        
-        if (Array.isArray(errorData.detail)) {
-          errorMessage = errorData.detail.map(e => {
-            if (typeof e === 'object' && e.msg) {
-              return `${e.loc?.join('.') || ''}: ${e.msg}`
-            }
-            return String(e)
-          }).join(', ')
-        } else if (typeof errorData.detail === 'string') {
-          errorMessage = errorData.detail
-        } else if (errorData.detail?.msg) {
-          errorMessage = errorData.detail.msg
-        } else if (typeof errorData.detail === 'object') {
-          errorMessage = JSON.stringify(errorData.detail)
-        } else {
-          errorMessage = String(errorData.detail || errorData.message || errorMessage)
-        }
-      } else if (err.message) {
-        errorMessage = err.message
-      }
-      
-      setError(errorMessage)
-    } finally {
-      setUploading(false)
-    }
-  }, [])
-
-  const handleConfirmMapping = async (result) => {
-    if (!result.recognized_text || !result.mapping_id) {
-      alert('Недостаточно данных для подтверждения')
-      return
-    }
-
-    const confirmKey = `${result.recognized_text}_${result.mapping_id}`
-    if (confirmingIds.has(confirmKey)) {
-      return // Уже подтверждается
-    }
-
-    setConfirmingIds(prev => new Set([...prev, confirmKey]))
-
-    try {
-      const response = await axios.post('/api/mappings/confirm', null, {
-        params: {
-          recognized_text: result.recognized_text,
-          mapping_id: result.mapping_id,
-          match_score: result.match_score
-        }
-      })
-
-      alert(`✅ ${response.data.message}\nПодтверждений: ${response.data.user_confirmed}`)
-      
-      // Обновляем результат, помечая его как подтвержденный
-      setRecognitionResults(prev => prev.map(r => 
-        r.recognized_text === result.recognized_text && r.mapping_id === result.mapping_id
-          ? { ...r, is_confirmed: true, match_score: 100.0 }
-          : r
-      ))
-    } catch (err) {
-      let errorMessage = 'Ошибка при подтверждении'
-      
-      if (err.response?.data) {
-        const errorData = err.response.data
-        if (typeof errorData.detail === 'string') {
-          errorMessage = errorData.detail
-        } else if (errorData.detail?.msg) {
-          errorMessage = errorData.detail.msg
-        }
-      }
-      
-      alert(`❌ ${errorMessage}`)
-    } finally {
-      setConfirmingIds(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(confirmKey)
-        return newSet
-      })
-    }
-  }
-
-  const handleExportResults = async () => {
-    if (!sessionId) {
-      alert('Нет результатов для выгрузки')
-      return
-    }
-
-    try {
-      const response = await axios.get(`/api/mappings/upload/export/${sessionId}`, {
-        responseType: 'blob',
-      })
-
-      const url = window.URL.createObjectURL(new Blob([response.data]))
-      const link = document.createElement('a')
-      link.href = url
-      link.setAttribute('download', `results_${sessionId}.xlsx`)
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
-    } catch (err) {
-      let errorMessage = 'Ошибка при выгрузке'
-      
-      if (err.response?.data) {
-        const errorData = err.response.data
-        
-        if (Array.isArray(errorData.detail)) {
-          errorMessage = errorData.detail.map(e => {
-            if (typeof e === 'object' && e.msg) {
-              return `${e.loc?.join('.') || ''}: ${e.msg}`
-            }
-            return String(e)
-          }).join(', ')
-        } else if (typeof errorData.detail === 'string') {
-          errorMessage = errorData.detail
-        } else if (errorData.detail?.msg) {
-          errorMessage = errorData.detail.msg
-        } else if (typeof errorData.detail === 'object') {
-          errorMessage = JSON.stringify(errorData.detail)
-        } else {
-          errorMessage = String(errorData.detail || errorData.message || errorMessage)
-        }
-      } else if (err.message) {
-        errorMessage = err.message
-      }
-      
-      setError(errorMessage)
-    }
-  }
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'text/csv': ['.csv'],
-      'application/vnd.ms-excel': ['.xls'],
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-      'application/pdf': ['.pdf'],
-      'image/*': ['.jpg', '.jpeg', '.png']
-    },
-    maxSize: 20 * 1024 * 1024,
-  })
 
   const resetForm = () => {
     setFormData({
@@ -520,14 +261,12 @@ function TablePage() {
   
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage)
-    setSearchQuery('')
-    setSearchResults([])
   }
   
   const totalPages = Math.ceil(totalItems / itemsPerPage)
 
   // Данные для отображения
-  const displayData = searchQuery.trim() ? searchResults : mappings.map(m => ({
+  const displayData = mappings.map(m => ({
     mapping: m,
     match_score: null,
     matched_fields: []
@@ -536,32 +275,6 @@ function TablePage() {
   return (
     <div className="table-page">
       <div className="table-controls">
-        <div className="search-section">
-          <div className="search-input-group">
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Введите артикул для поиска..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-            />
-            <button className="search-button" onClick={handleSearch} disabled={loading}>
-              🔍 Поиск
-            </button>
-          </div>
-          <div className="min-score-control">
-            <label>Мин. совпадение: {minScore}%</label>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={minScore}
-              onChange={(e) => setMinScore(parseInt(e.target.value))}
-            />
-          </div>
-        </div>
-
         <div className="action-buttons">
           <button className="btn-primary" onClick={() => {
             if (showAddForm && !editingId) {
@@ -580,10 +293,10 @@ function TablePage() {
 
       {error && <div className="error">❌ {error}</div>}
       {loading && <div className="loading">⏳ Загрузка данных...</div>}
-      {!loading && !error && mappings.length === 0 && !searchQuery.trim() && (
-        <div className="info">ℹ️ Таблица пуста. Загрузите данные через файл или добавьте строку вручную.</div>
+      {!loading && !error && mappings.length === 0 && (
+        <div className="info">ℹ️ Таблица пуста. Добавьте строку вручную.</div>
       )}
-      {!loading && !error && !searchQuery.trim() && totalItems > 0 && (
+      {!loading && !error && totalItems > 0 && (
         <div className="info">
           ✅ Показано {mappings.length} из {totalItems} записей (страница {currentPage} из {Math.ceil(totalItems / itemsPerPage)})
         </div>
@@ -732,21 +445,6 @@ function TablePage() {
         </div>
       )}
 
-      <div className="upload-section">
-        <div {...getRootProps()} className={`file-upload ${isDragActive ? 'dragover' : ''}`}>
-          <input {...getInputProps()} />
-          {uploading ? (
-            <p>⏳ Загрузка и обработка файла...</p>
-          ) : (
-            <>
-              <p>📄 Перетащите файл сюда или нажмите для выбора</p>
-              <p className="upload-hint">Поддерживаются: CSV, Excel, PDF, изображения</p>
-            </>
-          )}
-        </div>
-      </div>
-
-
       {/* Список записей с артикулом АГБ */}
       {displayData.length > 0 && (
         <div className="mappings-list">
@@ -758,11 +456,21 @@ function TablePage() {
               <div key={m.id} className="mapping-item">
                 <div className="mapping-item-content">
                   <div className="mapping-item-main">
-                    <span className="mapping-article-agb">{m.article_agb || '-'}</span>
+                    <div className="mapping-nomenclature-agb">
+                      <span className="mapping-label">Номенклатура АГБ:</span>
+                      <span className="mapping-value">{m.nomenclature_agb || '-'}</span>
+                    </div>
+                    <div className="mapping-article-agb">
+                      <span className="mapping-label">Артикул АГБ:</span>
+                      <span className="mapping-value">{m.article_agb || '-'}</span>
+                    </div>
                     {matchScore !== null && (
-                      <span className={`match-score score-${Math.floor(matchScore / 25)}`}>
-                        {matchScore.toFixed(1)}%
-                      </span>
+                      <div className="mapping-match-score">
+                        <span className="mapping-label">Совпадение:</span>
+                        <span className={`match-score score-${Math.floor(matchScore / 25)}`}>
+                          {matchScore.toFixed(1)}%
+                        </span>
+                      </div>
                     )}
                   </div>
                   <button
@@ -780,15 +488,11 @@ function TablePage() {
 
       {!loading && displayData.length === 0 && (
         <div className="empty-state">
-          {searchQuery.trim() ? (
-            <p>Ничего не найдено. Попробуйте изменить запрос или уменьшить минимальный процент совпадения.</p>
-          ) : (
-            <p>Таблица пуста. Добавьте строки вручную или загрузите файл.</p>
-          )}
+          <p>Таблица пуста. Добавьте строки вручную.</p>
         </div>
       )}
 
-      {!loading && !error && !searchQuery.trim() && totalPages > 1 && (
+      {!loading && !error && totalPages > 1 && (
         <div className="pagination">
           <button
             className="pagination-btn"
@@ -807,92 +511,6 @@ function TablePage() {
           >
             Следующая →
           </button>
-        </div>
-      )}
-
-      {/* Модальное окно с результатами распознавания */}
-      {showRecognitionModal && (
-        <div className="modal-overlay" onClick={() => setShowRecognitionModal(false)}>
-          <div className="modal-content recognition-modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Результаты обработки файла ({recognitionResults.length})</h2>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                {recognitionResults.length > 0 && sessionId && (
-                  <button className="btn-primary" onClick={handleExportResults} style={{ margin: 0 }}>
-                    📥 Выгрузить в Excel
-                  </button>
-                )}
-                <button className="modal-close" onClick={() => setShowRecognitionModal(false)}>×</button>
-              </div>
-            </div>
-            <div className="modal-body">
-              {recognitionResults.length > 0 ? (
-                <div className="recognition-results-list">
-                  {recognitionResults
-                    .filter(result => result.match_score && result.match_score > 80 && result.mapping)
-                    .map((result, idx) => (
-                      <div key={idx} className="recognition-result-item">
-                        <div className="recognition-result-main">
-                          <div className="recognition-result-row">
-                            <span className="recognition-label">Артикул АГБ:</span>
-                            <span className="recognition-value">{result.mapping?.article_agb || '-'}</span>
-                          </div>
-                          <div className="recognition-result-row">
-                            <span className="recognition-label">Номенклатура АГБ:</span>
-                            <span className="recognition-value">{result.mapping?.nomenclature_agb || '-'}</span>
-                          </div>
-                          <div className="recognition-result-row">
-                            <span className="recognition-label">Совпадение:</span>
-                            <span className={`match-score score-${Math.floor((result.match_score || 0) / 25)}`}>
-                              {result.match_score ? result.match_score.toFixed(1) : '0'}%
-                            </span>
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          <button
-                            className="btn-details"
-                            onClick={() => {
-                              setShowRecognitionModal(false)
-                              openModal(result.mapping, result.match_score)
-                            }}
-                          >
-                            Подробнее
-                          </button>
-                          <button
-                            className={`btn-confirm ${result.is_confirmed ? 'confirmed' : ''}`}
-                            onClick={() => handleConfirmMapping(result)}
-                            disabled={confirmingIds.has(`${result.recognized_text}_${result.mapping_id}`) || result.is_confirmed}
-                            style={{
-                              padding: '10px 20px',
-                              background: result.is_confirmed 
-                                ? 'var(--tg-theme-button-color, #3390ec)' 
-                                : 'var(--tg-theme-secondary-bg-color, #f5f5f5)',
-                              color: result.is_confirmed ? 'white' : 'var(--tg-theme-text-color, #000)',
-                              border: result.is_confirmed ? 'none' : '1px solid var(--tg-theme-hint-color, #e0e0e0)',
-                              borderRadius: '6px',
-                              cursor: result.is_confirmed ? 'default' : 'pointer',
-                              fontSize: '14px',
-                              fontWeight: '600',
-                              whiteSpace: 'nowrap',
-                              opacity: confirmingIds.has(`${result.recognized_text}_${result.mapping_id}`) ? 0.6 : 1
-                            }}
-                          >
-                            {result.is_confirmed ? '✓ Подтверждено' : '✓ Подтвердить'}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              ) : (
-                <div className="empty-state">
-                  <p>Нет результатов с совпадением более 80%</p>
-                  <p style={{ fontSize: '14px', color: 'var(--tg-theme-hint-color, #999999)', marginTop: '8px' }}>
-                    Попробуйте загрузить другой файл или проверьте данные в таблице соответствий.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       )}
 
