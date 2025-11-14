@@ -185,20 +185,20 @@ function TablePage() {
 
   const handleEdit = (mapping) => {
     setFormData({
-      article_bl: mapping.article_bl || '',
-      article_agb: mapping.article_agb || '',
-      variant_1: mapping.variant_1 || '',
-      variant_2: mapping.variant_2 || '',
-      variant_3: mapping.variant_3 || '',
-      variant_4: mapping.variant_4 || '',
-      variant_5: mapping.variant_5 || '',
-      variant_6: mapping.variant_6 || '',
-      variant_7: mapping.variant_7 || '',
-      variant_8: mapping.variant_8 || '',
-      unit: mapping.unit || '',
-      code: mapping.code || '',
-      nomenclature_agb: mapping.nomenclature_agb || '',
-      packaging: mapping.packaging || ''
+      article_bl: mapping.article_bl || '-',
+      article_agb: mapping.article_agb || '-',
+      variant_1: mapping.variant_1 || '-',
+      variant_2: mapping.variant_2 || '-',
+      variant_3: mapping.variant_3 || '-',
+      variant_4: mapping.variant_4 || '-',
+      variant_5: mapping.variant_5 || '-',
+      variant_6: mapping.variant_6 || '-',
+      variant_7: mapping.variant_7 || '-',
+      variant_8: mapping.variant_8 || '-',
+      unit: mapping.unit || '-',
+      code: mapping.code || '-',
+      nomenclature_agb: mapping.nomenclature_agb || '-',
+      packaging: mapping.packaging || '-'
     })
     setEditingId(mapping.id)
     setShowAddForm(true)
