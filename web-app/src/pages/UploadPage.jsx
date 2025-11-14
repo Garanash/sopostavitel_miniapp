@@ -144,8 +144,9 @@ function UploadPage({ userId }) {
     }
 
     try {
-      const response = await axios.get(`/api/mappings/export/${sessionId}`, {
-        responseType: 'blob'
+      const response = await axios.get(`/api/mappings/upload/export/${sessionId}`, {
+        responseType: 'blob',
+        timeout: 60000
       })
 
       const url = window.URL.createObjectURL(new Blob([response.data]))
@@ -157,7 +158,26 @@ function UploadPage({ userId }) {
       link.remove()
       window.URL.revokeObjectURL(url)
     } catch (err) {
-      alert('Ошибка при выгрузке файла: ' + (err.response?.data?.detail || err.message))
+      let errorMessage = 'Ошибка при выгрузке файла'
+      if (err.response?.data) {
+        if (err.response.data instanceof Blob) {
+          // Если ответ - Blob с ошибкой, пытаемся прочитать как текст
+          const text = await err.response.data.text()
+          try {
+            const errorData = JSON.parse(text)
+            errorMessage = errorData.detail || errorMessage
+          } catch {
+            errorMessage = text || errorMessage
+          }
+        } else if (typeof err.response.data === 'object') {
+          errorMessage = err.response.data.detail || err.response.data.message || errorMessage
+        } else {
+          errorMessage = err.response.data || errorMessage
+        }
+      } else if (err.message) {
+        errorMessage = err.message
+      }
+      alert(`❌ ${errorMessage}`)
     }
   }
 

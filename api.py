@@ -1266,27 +1266,36 @@ async def export_recognition_results(session_id: str):
         
         # Данные
         for result in results:
-            mapping = result.get('mapping', {})
+            mapping = result.get('mapping') or {}
+            # Обрабатываем случаи, когда mapping может быть None или пустым
+            if not mapping:
+                mapping = {}
+            
+            # Обрабатываем match_score - может быть None
+            match_score = result.get('match_score')
+            if match_score is None:
+                match_score = 0
+            
             row = [
-                result.get('recognized_text', ''),
-                result.get('mapping_id', ''),
-                result.get('match_score', 0),
-                result.get('matched_field', ''),
-                result.get('matched_value', ''),
-                mapping.get('article_bl', ''),
-                mapping.get('article_agb', ''),
-                mapping.get('variant_1', ''),
-                mapping.get('variant_2', ''),
-                mapping.get('variant_3', ''),
-                mapping.get('variant_4', ''),
-                mapping.get('variant_5', ''),
-                mapping.get('variant_6', ''),
-                mapping.get('variant_7', ''),
-                mapping.get('variant_8', ''),
-                mapping.get('unit', ''),
-                mapping.get('code', ''),
-                mapping.get('nomenclature_agb', ''),
-                mapping.get('packaging', ''),
+                result.get('recognized_text', '') or '',
+                result.get('mapping_id', '') or '',
+                match_score,
+                result.get('matched_field', '') or '',
+                result.get('matched_value', '') or '',
+                mapping.get('article_bl', '') or '',
+                mapping.get('article_agb', '') or '',
+                mapping.get('variant_1', '') or '',
+                mapping.get('variant_2', '') or '',
+                mapping.get('variant_3', '') or '',
+                mapping.get('variant_4', '') or '',
+                mapping.get('variant_5', '') or '',
+                mapping.get('variant_6', '') or '',
+                mapping.get('variant_7', '') or '',
+                mapping.get('variant_8', '') or '',
+                mapping.get('unit', '') or '',
+                mapping.get('code', '') or '',
+                mapping.get('nomenclature_agb', '') or '',
+                mapping.get('packaging', '') or '',
             ]
             ws.append(row)
         
