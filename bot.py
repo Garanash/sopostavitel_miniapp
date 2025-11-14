@@ -159,8 +159,21 @@ async def handle_file(message: Message, state: FSMContext):
         
         # Скачиваем файл
         file_info = await bot.get_file(file.file_id)
-        file_data = await bot.download_file(file_info.file_path)
-        file_bytes = await file_data.read()
+        file_destination = os.path.join(Config.TEMP_DIR, file_name)
+        os.makedirs(Config.TEMP_DIR, exist_ok=True)
+        
+        # Скачиваем файл во временную директорию
+        await bot.download_file(file_info.file_path, destination=file_destination)
+        
+        # Читаем файл в байты
+        with open(file_destination, 'rb') as f:
+            file_bytes = f.read()
+        
+        # Удаляем временный файл
+        try:
+            os.unlink(file_destination)
+        except:
+            pass
         
         # Отправляем файл в API для обработки
         await processing_msg.edit_text("🔍 Отправляю файл на обработку...")
