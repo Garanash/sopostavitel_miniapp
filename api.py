@@ -399,6 +399,81 @@ class ProductMappingSearchResponse(BaseModel):
     match_score: float
     matched_fields: List[str]
 
+async def ai_analyze_excel_structure(file_path: str) -> Optional[Dict]:
+    """Использует AI для анализа структуры Excel файла и определения столбцов"""
+    if not Config.OPENAI_API_KEY:
+        return None
+    
+    try:
+        workbook = openpyxl.load_workbook(file_path, data_only=True)
+        if not workbook.sheetnames:
+            return None
+        
+        # Берем первый лист
+        sheet = workbook[workbook.sheetnames[0]]
+        
+        # Собираем первые 10 строк для анализа
+        sample_data = []
+        for row_idx, row in enumerate(sheet.iter_rows(max_row=10, values_only=True), start=1):
+            row_data = [str(cell) if cell is not None else '' for cell in row]
+            sample_data.append({
+                'row': row_idx,
+                'values': row_data[:20]  # Первые 20 столбцов
+            })
+        
+        # Формируем промпт для AI
+        prompt = f"""Ты помощник для анализа структуры Excel таблицы.
+
+Данные из файла (первые 10 строк):
+{json.dumps(sample_data, ensure_ascii=False, indent=2)}
+
+Задача: определи структуру таблицы и найди столбец, который содержит:
+1. Артикулы или номера товаров (приоритет)
+2. Если артикула нет - номенклатуру/название товара
+
+ВАЖНО: 
+- Столбцы нумеруются с 1 (первый столбец = 1)
+- Если в первой строке есть заголовки - используй их для определения
+- Верни номер столбца (начиная с 1), который содержит артикул/номер или номенклатуру
+
+Ответь ТОЛЬКО в формате JSON:
+{{
+    "article_column": <номер столбца с артикулом/номером или null>,
+    "nomenclature_column": <номер столбца с номенклатурой/названием или null>,
+    "header_row": <номер строки с заголовками (обычно 1) или null>,
+    "reasoning": "<краткое объяснение>"
+}}"""
+
+        # Вызываем OpenAI API
+        client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
+        response = client.chat.completions.create(
+            model=Config.OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": "Ты помощник для анализа структуры таблиц. Отвечай только в формате JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+            max_tokens=300
+        )
+        
+        ai_response = response.choices[0].message.content.strip()
+        
+        # Парсим ответ AI
+        try:
+            if ai_response.startswith("```"):
+                ai_response = ai_response.split("```")[1]
+                if ai_response.startswith("json"):
+                    ai_response = ai_response[4:]
+            ai_response = ai_response.strip()
+            
+            ai_result = json.loads(ai_response)
+            return ai_result
+        except json.JSONDecodeError:
+            return None
+    except Exception as e:
+        print(f"Ошибка AI-анализа структуры: {e}")
+        return None
+
 async def ai_interpret_text(recognized_text: str, available_mappings: List[ProductMapping], db: AsyncSession) -> Optional[Dict]:
     """Использует AI для интерпретации распознанного текста и поиска в БД"""
     if not Config.OPENAI_API_KEY:
@@ -555,31 +630,37 @@ def calculate_similarity(text1: str, text2: str) -> float:
     # Если нет даже частичных совпадений, используем SequenceMatcher как fallback
     return SequenceMatcher(None, text1.lower(), text2.lower()).ratio() * 100
 
+def normalize_field(value: Optional[str]) -> Optional[str]:
+    """Нормализует поле: пустые значения и "-" становятся None"""
+    if not value or value.strip() == '' or value.strip() == '-':
+        return None
+    return value.strip()
+
 @app.post("/api/mappings", response_model=ProductMappingResponse)
 async def create_mapping(mapping: ProductMappingCreate, db: AsyncSession = Depends(get_db)):
     """Создание новой строки в таблице сопоставления"""
     db_mapping = ProductMapping(
         # Старые поля
-        code_1c=mapping.code_1c,
-        bortlanger=mapping.bortlanger,
-        epiroc=mapping.epiroc,
-        almazgeobur=mapping.almazgeobur,
+        code_1c=normalize_field(mapping.code_1c),
+        bortlanger=normalize_field(mapping.bortlanger),
+        epiroc=normalize_field(mapping.epiroc),
+        almazgeobur=normalize_field(mapping.almazgeobur),
         competitors=mapping.competitors or {},
         # Новые базовые поля
-        article_bl=mapping.article_bl,
-        article_agb=mapping.article_agb,
-        variant_1=mapping.variant_1,
-        variant_2=mapping.variant_2,
-        variant_3=mapping.variant_3,
-        variant_4=mapping.variant_4,
-        variant_5=mapping.variant_5,
-        variant_6=mapping.variant_6,
-        variant_7=mapping.variant_7,
-        variant_8=mapping.variant_8,
-        unit=mapping.unit,
-        code=mapping.code,
-        nomenclature_agb=mapping.nomenclature_agb,
-        packaging=mapping.packaging
+        article_bl=normalize_field(mapping.article_bl),
+        article_agb=normalize_field(mapping.article_agb),
+        variant_1=normalize_field(mapping.variant_1),
+        variant_2=normalize_field(mapping.variant_2),
+        variant_3=normalize_field(mapping.variant_3),
+        variant_4=normalize_field(mapping.variant_4),
+        variant_5=normalize_field(mapping.variant_5),
+        variant_6=normalize_field(mapping.variant_6),
+        variant_7=normalize_field(mapping.variant_7),
+        variant_8=normalize_field(mapping.variant_8),
+        unit=normalize_field(mapping.unit),
+        code=normalize_field(mapping.code),
+        nomenclature_agb=normalize_field(mapping.nomenclature_agb),
+        packaging=normalize_field(mapping.packaging)
     )
     db.add(db_mapping)
     await db.commit()
@@ -713,46 +794,28 @@ async def update_mapping(
         raise HTTPException(status_code=404, detail="Mapping not found")
     
     # Обновляем старые поля
-    if mapping.code_1c is not None:
-        db_mapping.code_1c = mapping.code_1c
-    if mapping.bortlanger is not None:
-        db_mapping.bortlanger = mapping.bortlanger
-    if mapping.epiroc is not None:
-        db_mapping.epiroc = mapping.epiroc
-    if mapping.almazgeobur is not None:
-        db_mapping.almazgeobur = mapping.almazgeobur
+    db_mapping.code_1c = normalize_field(mapping.code_1c)
+    db_mapping.bortlanger = normalize_field(mapping.bortlanger)
+    db_mapping.epiroc = normalize_field(mapping.epiroc)
+    db_mapping.almazgeobur = normalize_field(mapping.almazgeobur)
     if mapping.competitors is not None:
         db_mapping.competitors = mapping.competitors
     
     # Обновляем новые базовые поля
-    if mapping.article_bl is not None:
-        db_mapping.article_bl = mapping.article_bl
-    if mapping.article_agb is not None:
-        db_mapping.article_agb = mapping.article_agb
-    if mapping.variant_1 is not None:
-        db_mapping.variant_1 = mapping.variant_1
-    if mapping.variant_2 is not None:
-        db_mapping.variant_2 = mapping.variant_2
-    if mapping.variant_3 is not None:
-        db_mapping.variant_3 = mapping.variant_3
-    if mapping.variant_4 is not None:
-        db_mapping.variant_4 = mapping.variant_4
-    if mapping.variant_5 is not None:
-        db_mapping.variant_5 = mapping.variant_5
-    if mapping.variant_6 is not None:
-        db_mapping.variant_6 = mapping.variant_6
-    if mapping.variant_7 is not None:
-        db_mapping.variant_7 = mapping.variant_7
-    if mapping.variant_8 is not None:
-        db_mapping.variant_8 = mapping.variant_8
-    if mapping.unit is not None:
-        db_mapping.unit = mapping.unit
-    if mapping.code is not None:
-        db_mapping.code = mapping.code
-    if mapping.nomenclature_agb is not None:
-        db_mapping.nomenclature_agb = mapping.nomenclature_agb
-    if mapping.packaging is not None:
-        db_mapping.packaging = mapping.packaging
+    db_mapping.article_bl = normalize_field(mapping.article_bl)
+    db_mapping.article_agb = normalize_field(mapping.article_agb)
+    db_mapping.variant_1 = normalize_field(mapping.variant_1)
+    db_mapping.variant_2 = normalize_field(mapping.variant_2)
+    db_mapping.variant_3 = normalize_field(mapping.variant_3)
+    db_mapping.variant_4 = normalize_field(mapping.variant_4)
+    db_mapping.variant_5 = normalize_field(mapping.variant_5)
+    db_mapping.variant_6 = normalize_field(mapping.variant_6)
+    db_mapping.variant_7 = normalize_field(mapping.variant_7)
+    db_mapping.variant_8 = normalize_field(mapping.variant_8)
+    db_mapping.unit = normalize_field(mapping.unit)
+    db_mapping.code = normalize_field(mapping.code)
+    db_mapping.nomenclature_agb = normalize_field(mapping.nomenclature_agb)
+    db_mapping.packaging = normalize_field(mapping.packaging)
     
     await db.commit()
     await db.refresh(db_mapping)
@@ -774,121 +837,280 @@ async def upload_mapping_file(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Загрузка файла с распознаванием и сопоставлением с таблицей соответствий"""
+    """Загрузка файла с интеллектуальным распознаванием и сопоставлением с таблицей соответствий"""
     try:
         # Сохраняем файл
         file_bytes = await file.read()
         file_path = await file_processor.save_file(file_bytes, file.filename)
         
-        # Извлекаем текст
-        extracted_text = await file_processor.process_file(file_path, file.content_type)
-        
-        if not extracted_text.strip():
-            raise HTTPException(status_code=400, detail="Не удалось извлечь текст из файла")
-        
         # Получаем все записи из таблицы соответствий
         result = await db.execute(select(ProductMapping))
         all_mappings = result.scalars().all()
         
-        # Разбиваем текст на строки (артикулы/названия)
-        lines = [line.strip() for line in extracted_text.split('\n') if line.strip()]
-        
         # Результаты распознавания и сопоставления
         recognition_results = []
         
-        # Для каждой строки ищем совпадения
-        for line in lines:
-            if not line or len(line) < 2:
-                continue
-            
-            best_match = None
-            best_score = 0.0
-            
-            # Сначала пробуем AI-поиск
-            ai_match = await ai_interpret_text(line, all_mappings, db)
-            if ai_match and ai_match.get('match_score', 0) > best_score:
-                best_score = ai_match['match_score']
-                mapping = ai_match['mapping']
-                best_match = {
-                    'recognized_text': line,
-                    'mapping_id': mapping.id,
-                    'match_score': round(best_score, 2),
-                    'matched_field': 'ai_match',
-                    'matched_value': line,
-                    'is_ai_match': True,
-                    'is_confirmed': ai_match.get('is_confirmed', False),
-                    'mapping': {
-                        'id': mapping.id,
-                        'article_bl': mapping.article_bl,
-                        'article_agb': mapping.article_agb,
-                        'variant_1': mapping.variant_1,
-                        'variant_2': mapping.variant_2,
-                        'variant_3': mapping.variant_3,
-                        'variant_4': mapping.variant_4,
-                        'variant_5': mapping.variant_5,
-                        'variant_6': mapping.variant_6,
-                        'variant_7': mapping.variant_7,
-                        'variant_8': mapping.variant_8,
-                        'unit': mapping.unit,
-                        'code': mapping.code,
-                        'nomenclature_agb': mapping.nomenclature_agb,
-                        'packaging': mapping.packaging,
-                    }
-                }
-            
-            # Если AI не нашел или результат слабый, используем обычный поиск
-            if not best_match or best_score < 80:
-                # Ищем совпадения во всех полях таблицы
-                for mapping in all_mappings:
-                    # Проверяем все поля
-                    fields_to_check = [
-                    ('article_bl', mapping.article_bl),
-                    ('article_agb', mapping.article_agb),
-                    ('variant_1', mapping.variant_1),
-                    ('variant_2', mapping.variant_2),
-                    ('variant_3', mapping.variant_3),
-                    ('variant_4', mapping.variant_4),
-                    ('variant_5', mapping.variant_5),
-                    ('variant_6', mapping.variant_6),
-                    ('variant_7', mapping.variant_7),
-                    ('variant_8', mapping.variant_8),
-                    ('code', mapping.code),
-                    ('nomenclature_agb', mapping.nomenclature_agb),
-                    ]
+        # Если это Excel файл - используем интеллектуальный анализ структуры
+        if file.content_type in [
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-excel',
+            'application/octet-stream'
+        ] or (file.filename and file.filename.lower().endswith(('.xlsx', '.xls', '.csv'))):
+            try:
+                workbook = openpyxl.load_workbook(file_path, data_only=True)
+                
+                # Анализируем структуру файла с помощью AI
+                structure = await ai_analyze_excel_structure(file_path)
+                
+                # Обрабатываем каждый лист
+                for sheet_name in workbook.sheetnames:
+                    sheet = workbook[sheet_name]
                     
-                    for field_name, field_value in fields_to_check:
-                        if field_value:
-                            score = calculate_similarity(line, str(field_value))
-                            if score > best_score:
-                                best_score = score
-                                best_match = {
-                                    'recognized_text': line,
-                                    'mapping_id': mapping.id,
-                                    'match_score': round(score, 2),
-                                    'matched_field': field_name,
-                                    'matched_value': field_value,
-                                    'mapping': {
-                                        'id': mapping.id,
-                                        'article_bl': mapping.article_bl,
-                                        'article_agb': mapping.article_agb,
-                                        'variant_1': mapping.variant_1,
-                                        'variant_2': mapping.variant_2,
-                                        'variant_3': mapping.variant_3,
-                                        'variant_4': mapping.variant_4,
-                                        'variant_5': mapping.variant_5,
-                                        'variant_6': mapping.variant_6,
-                                        'variant_7': mapping.variant_7,
-                                        'variant_8': mapping.variant_8,
-                                        'unit': mapping.unit,
-                                        'code': mapping.code,
-                                        'nomenclature_agb': mapping.nomenclature_agb,
-                                        'packaging': mapping.packaging,
-                                    }
+                    # Определяем столбцы для поиска
+                    article_col = None
+                    nomenclature_col = None
+                    header_row = 1
+                    
+                    if structure:
+                        article_col = structure.get('article_column')
+                        nomenclature_col = structure.get('nomenclature_column')
+                        header_row = structure.get('header_row', 1)
+                    
+                    # Если AI не определил, пробуем найти по заголовкам
+                    if not article_col and not nomenclature_col:
+                        # Ищем заголовки в первых строках
+                        for row_idx in range(1, min(5, sheet.max_row + 1)):
+                            row = sheet[row_idx]
+                            for col_idx, cell in enumerate(row, start=1):
+                                cell_value = str(cell.value).lower() if cell.value else ''
+                                if any(keyword in cell_value for keyword in ['артикул', 'номер', 'код', 'article', 'number']):
+                                    article_col = col_idx
+                                elif any(keyword in cell_value for keyword in ['номенклатура', 'название', 'наименование', 'name', 'nomenclature']):
+                                    nomenclature_col = col_idx
+                            if article_col or nomenclature_col:
+                                header_row = row_idx
+                                break
+                    
+                    # Обрабатываем строки данных
+                    for row_idx, row in enumerate(sheet.iter_rows(min_row=header_row + 1, values_only=True), start=header_row + 1):
+                        # Извлекаем значение из нужного столбца
+                        search_value = None
+                        
+                        if article_col:
+                            col_idx = article_col - 1  # openpyxl использует 0-based индексы для values_only
+                            if col_idx < len(row) and row[col_idx]:
+                                search_value = str(row[col_idx]).strip()
+                        
+                        if not search_value and nomenclature_col:
+                            col_idx = nomenclature_col - 1
+                            if col_idx < len(row) and row[col_idx]:
+                                search_value = str(row[col_idx]).strip()
+                        
+                        if not search_value or len(search_value) < 2:
+                            continue
+                        
+                        # Ищем совпадения
+                        best_match = None
+                        best_score = 0.0
+                        
+                        # Сначала пробуем AI-поиск
+                        ai_match = await ai_interpret_text(search_value, all_mappings, db)
+                        if ai_match and ai_match.get('match_score', 0) > best_score:
+                            best_score = ai_match['match_score']
+                            mapping = ai_match['mapping']
+                            best_match = {
+                                'recognized_text': search_value,
+                                'mapping_id': mapping.id,
+                                'match_score': round(best_score, 2),
+                                'matched_field': 'ai_match',
+                                'matched_value': search_value,
+                                'is_ai_match': True,
+                                'is_confirmed': ai_match.get('is_confirmed', False),
+                                'mapping': {
+                                    'id': mapping.id,
+                                    'article_bl': mapping.article_bl,
+                                    'article_agb': mapping.article_agb,
+                                    'variant_1': mapping.variant_1,
+                                    'variant_2': mapping.variant_2,
+                                    'variant_3': mapping.variant_3,
+                                    'variant_4': mapping.variant_4,
+                                    'variant_5': mapping.variant_5,
+                                    'variant_6': mapping.variant_6,
+                                    'variant_7': mapping.variant_7,
+                                    'variant_8': mapping.variant_8,
+                                    'unit': mapping.unit,
+                                    'code': mapping.code,
+                                    'nomenclature_agb': mapping.nomenclature_agb,
+                                    'packaging': mapping.packaging,
                                 }
+                            }
+                        
+                        # Если AI не нашел или результат слабый, используем обычный поиск
+                        if not best_match or best_score < 80:
+                            for mapping in all_mappings:
+                                fields_to_check = [
+                                    ('article_bl', mapping.article_bl),
+                                    ('article_agb', mapping.article_agb),
+                                    ('variant_1', mapping.variant_1),
+                                    ('variant_2', mapping.variant_2),
+                                    ('variant_3', mapping.variant_3),
+                                    ('variant_4', mapping.variant_4),
+                                    ('variant_5', mapping.variant_5),
+                                    ('variant_6', mapping.variant_6),
+                                    ('variant_7', mapping.variant_7),
+                                    ('variant_8', mapping.variant_8),
+                                    ('code', mapping.code),
+                                    ('nomenclature_agb', mapping.nomenclature_agb),
+                                ]
+                                
+                                for field_name, field_value in fields_to_check:
+                                    if field_value:
+                                        score = calculate_similarity(search_value, str(field_value))
+                                        if score > best_score:
+                                            best_score = score
+                                            best_match = {
+                                                'recognized_text': search_value,
+                                                'mapping_id': mapping.id,
+                                                'match_score': round(score, 2),
+                                                'matched_field': field_name,
+                                                'matched_value': field_value,
+                                                'mapping': {
+                                                    'id': mapping.id,
+                                                    'article_bl': mapping.article_bl,
+                                                    'article_agb': mapping.article_agb,
+                                                    'variant_1': mapping.variant_1,
+                                                    'variant_2': mapping.variant_2,
+                                                    'variant_3': mapping.variant_3,
+                                                    'variant_4': mapping.variant_4,
+                                                    'variant_5': mapping.variant_5,
+                                                    'variant_6': mapping.variant_6,
+                                                    'variant_7': mapping.variant_7,
+                                                    'variant_8': mapping.variant_8,
+                                                    'unit': mapping.unit,
+                                                    'code': mapping.code,
+                                                    'nomenclature_agb': mapping.nomenclature_agb,
+                                                    'packaging': mapping.packaging,
+                                                }
+                                            }
+                        
+                        # Добавляем результат если есть совпадение
+                        if best_match:
+                            recognition_results.append(best_match)
+                
+            except Exception as e:
+                print(f"Ошибка при обработке Excel: {e}")
+                import traceback
+                traceback.print_exc()
+                # Fallback на обычную обработку
+                extracted_text = await file_processor.process_file(file_path, file.content_type)
+                if not extracted_text.strip():
+                    raise HTTPException(status_code=400, detail="Не удалось извлечь текст из файла")
+                
+                lines = [line.strip() for line in extracted_text.split('\n') if line.strip()]
+        else:
+            # Для других типов файлов используем обычную обработку
+            extracted_text = await file_processor.process_file(file_path, file.content_type)
             
-            # Добавляем результат если есть совпадение
-            if best_match:
-                recognition_results.append(best_match)
+            if not extracted_text.strip():
+                raise HTTPException(status_code=400, detail="Не удалось извлечь текст из файла")
+            
+            # Разбиваем текст на строки (артикулы/названия)
+            lines = [line.strip() for line in extracted_text.split('\n') if line.strip()]
+        
+        # Для не-Excel файлов обрабатываем построчно
+        if 'lines' in locals():
+            for line in lines:
+                if not line or len(line) < 2:
+                    continue
+                
+                best_match = None
+                best_score = 0.0
+                
+                # Сначала пробуем AI-поиск
+                ai_match = await ai_interpret_text(line, all_mappings, db)
+                if ai_match and ai_match.get('match_score', 0) > best_score:
+                    best_score = ai_match['match_score']
+                    mapping = ai_match['mapping']
+                    best_match = {
+                        'recognized_text': line,
+                        'mapping_id': mapping.id,
+                        'match_score': round(best_score, 2),
+                        'matched_field': 'ai_match',
+                        'matched_value': line,
+                        'is_ai_match': True,
+                        'is_confirmed': ai_match.get('is_confirmed', False),
+                        'mapping': {
+                            'id': mapping.id,
+                            'article_bl': mapping.article_bl,
+                            'article_agb': mapping.article_agb,
+                            'variant_1': mapping.variant_1,
+                            'variant_2': mapping.variant_2,
+                            'variant_3': mapping.variant_3,
+                            'variant_4': mapping.variant_4,
+                            'variant_5': mapping.variant_5,
+                            'variant_6': mapping.variant_6,
+                            'variant_7': mapping.variant_7,
+                            'variant_8': mapping.variant_8,
+                            'unit': mapping.unit,
+                            'code': mapping.code,
+                            'nomenclature_agb': mapping.nomenclature_agb,
+                            'packaging': mapping.packaging,
+                        }
+                    }
+                
+                # Если AI не нашел или результат слабый, используем обычный поиск
+                if not best_match or best_score < 80:
+                    # Ищем совпадения во всех полях таблицы
+                    for mapping in all_mappings:
+                        # Проверяем все поля
+                        fields_to_check = [
+                            ('article_bl', mapping.article_bl),
+                            ('article_agb', mapping.article_agb),
+                            ('variant_1', mapping.variant_1),
+                            ('variant_2', mapping.variant_2),
+                            ('variant_3', mapping.variant_3),
+                            ('variant_4', mapping.variant_4),
+                            ('variant_5', mapping.variant_5),
+                            ('variant_6', mapping.variant_6),
+                            ('variant_7', mapping.variant_7),
+                            ('variant_8', mapping.variant_8),
+                            ('code', mapping.code),
+                            ('nomenclature_agb', mapping.nomenclature_agb),
+                        ]
+                        
+                        for field_name, field_value in fields_to_check:
+                            if field_value:
+                                score = calculate_similarity(line, str(field_value))
+                                if score > best_score:
+                                    best_score = score
+                                    best_match = {
+                                        'recognized_text': line,
+                                        'mapping_id': mapping.id,
+                                        'match_score': round(score, 2),
+                                        'matched_field': field_name,
+                                        'matched_value': field_value,
+                                        'mapping': {
+                                            'id': mapping.id,
+                                            'article_bl': mapping.article_bl,
+                                            'article_agb': mapping.article_agb,
+                                            'variant_1': mapping.variant_1,
+                                            'variant_2': mapping.variant_2,
+                                            'variant_3': mapping.variant_3,
+                                            'variant_4': mapping.variant_4,
+                                            'variant_5': mapping.variant_5,
+                                            'variant_6': mapping.variant_6,
+                                            'variant_7': mapping.variant_7,
+                                            'variant_8': mapping.variant_8,
+                                            'unit': mapping.unit,
+                                            'code': mapping.code,
+                                            'nomenclature_agb': mapping.nomenclature_agb,
+                                            'packaging': mapping.packaging,
+                                        }
+                                    }
+                
+                # Добавляем результат если есть совпадение
+                if best_match:
+                    recognition_results.append(best_match)
         
         # Сохраняем результаты в сессию (можно использовать Redis или БД)
         # Пока сохраняем в файл временно
@@ -898,9 +1120,11 @@ async def upload_mapping_file(
         with open(results_file, 'w', encoding='utf-8') as f:
             json.dump(recognition_results, f, ensure_ascii=False, indent=2)
         
+        recognized_count = len(lines) if 'lines' in locals() else len(recognition_results)
+        
         return {
-            "message": f"Обработано {len(lines)} строк, найдено {len(recognition_results)} совпадений",
-            "recognized_count": len(lines),
+            "message": f"Обработано файл, найдено {len(recognition_results)} совпадений",
+            "recognized_count": recognized_count,
             "matches_count": len(recognition_results),
             "results": recognition_results[:50],  # Первые 50 результатов
             "session_id": session_id

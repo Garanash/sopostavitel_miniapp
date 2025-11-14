@@ -114,42 +114,38 @@ function TablePage() {
 
   const resetForm = () => {
     setFormData({
-      article_bl: '',
-      article_agb: '',
-      variant_1: '',
-      variant_2: '',
-      variant_3: '',
-      variant_4: '',
-      variant_5: '',
-      variant_6: '',
-      variant_7: '',
-      variant_8: '',
-      unit: '',
-      code: '',
-      nomenclature_agb: '',
-      packaging: ''
+      article_bl: '-',
+      article_agb: '-',
+      variant_1: '-',
+      variant_2: '-',
+      variant_3: '-',
+      variant_4: '-',
+      variant_5: '-',
+      variant_6: '-',
+      variant_7: '-',
+      variant_8: '-',
+      unit: '-',
+      code: '-',
+      nomenclature_agb: '-',
+      packaging: '-'
     })
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     
-    const requiredFields = ['article_bl', 'article_agb', 'variant_1', 'variant_2', 'variant_3', 
-                           'variant_4', 'variant_5', 'variant_6', 'variant_7', 'variant_8', 
-                           'unit', 'code', 'nomenclature_agb', 'packaging']
-    const missingFields = requiredFields.filter(field => !formData[field] || formData[field].trim() === '')
-    
-    if (missingFields.length > 0) {
-      setError(`Заполните все обязательные поля: ${missingFields.join(', ')}`)
-      return
+    // Заменяем пустые значения на "-"
+    const dataToSend = {}
+    for (const key in formData) {
+      dataToSend[key] = formData[key].trim() === '' ? '-' : formData[key].trim()
     }
     
     try {
       if (editingId) {
-        await axios.put(`/api/mappings/${editingId}`, formData)
+        await axios.put(`/api/mappings/${editingId}`, dataToSend)
         setEditingId(null)
       } else {
-        await axios.post('/api/mappings', formData)
+        await axios.post('/api/mappings', dataToSend)
       }
       setShowAddForm(false)
       resetForm()
@@ -308,129 +304,129 @@ function TablePage() {
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="form-row">
-                <label>Артикул BL <span className="required">*</span>:</label>
+                <label>Артикул BL:</label>
                 <input
                   type="text"
                   value={formData.article_bl}
                   onChange={(e) => setFormData({ ...formData, article_bl: e.target.value })}
-                  required
+                  placeholder="-"
                 />
               </div>
               <div className="form-row">
-                <label>Артикул АГБ <span className="required">*</span>:</label>
+                <label>Артикул АГБ:</label>
                 <input
                   type="text"
                   value={formData.article_agb}
                   onChange={(e) => setFormData({ ...formData, article_agb: e.target.value })}
-                  required
+                  placeholder="-"
                 />
               </div>
               <div className="form-row">
-                <label>Вариант подбора 1 <span className="required">*</span>:</label>
+                <label>Вариант подбора 1:</label>
                 <input
                   type="text"
                   value={formData.variant_1}
                   onChange={(e) => setFormData({ ...formData, variant_1: e.target.value })}
-                  required
+                  placeholder="-"
                 />
               </div>
               <div className="form-row">
-                <label>Вариант подбора 2 <span className="required">*</span>:</label>
+                <label>Вариант подбора 2:</label>
                 <input
                   type="text"
                   value={formData.variant_2}
                   onChange={(e) => setFormData({ ...formData, variant_2: e.target.value })}
-                  required
+                  placeholder="-"
                 />
               </div>
               <div className="form-row">
-                <label>Вариант подбора 3 <span className="required">*</span>:</label>
+                <label>Вариант подбора 3:</label>
                 <input
                   type="text"
                   value={formData.variant_3}
                   onChange={(e) => setFormData({ ...formData, variant_3: e.target.value })}
-                  required
+                  placeholder="-"
                 />
               </div>
               <div className="form-row">
-                <label>Вариант подбора 4 <span className="required">*</span>:</label>
+                <label>Вариант подбора 4:</label>
                 <input
                   type="text"
                   value={formData.variant_4}
                   onChange={(e) => setFormData({ ...formData, variant_4: e.target.value })}
-                  required
+                  placeholder="-"
                 />
               </div>
               <div className="form-row">
-                <label>Вариант подбора 5 <span className="required">*</span>:</label>
+                <label>Вариант подбора 5:</label>
                 <input
                   type="text"
                   value={formData.variant_5}
                   onChange={(e) => setFormData({ ...formData, variant_5: e.target.value })}
-                  required
+                  placeholder="-"
                 />
               </div>
               <div className="form-row">
-                <label>Вариант подбора 6 <span className="required">*</span>:</label>
+                <label>Вариант подбора 6:</label>
                 <input
                   type="text"
                   value={formData.variant_6}
                   onChange={(e) => setFormData({ ...formData, variant_6: e.target.value })}
-                  required
+                  placeholder="-"
                 />
               </div>
               <div className="form-row">
-                <label>Вариант подбора 7 <span className="required">*</span>:</label>
+                <label>Вариант подбора 7:</label>
                 <input
                   type="text"
                   value={formData.variant_7}
                   onChange={(e) => setFormData({ ...formData, variant_7: e.target.value })}
-                  required
+                  placeholder="-"
                 />
               </div>
               <div className="form-row">
-                <label>Вариант подбора 8 <span className="required">*</span>:</label>
+                <label>Вариант подбора 8:</label>
                 <input
                   type="text"
                   value={formData.variant_8}
                   onChange={(e) => setFormData({ ...formData, variant_8: e.target.value })}
-                  required
+                  placeholder="-"
                 />
               </div>
               <div className="form-row">
-                <label>Ед.изм. <span className="required">*</span>:</label>
+                <label>Ед.изм.:</label>
                 <input
                   type="text"
                   value={formData.unit}
                   onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                  required
+                  placeholder="-"
                 />
               </div>
               <div className="form-row">
-                <label>Код <span className="required">*</span>:</label>
+                <label>Код:</label>
                 <input
                   type="text"
                   value={formData.code}
                   onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                  required
+                  placeholder="-"
                 />
               </div>
               <div className="form-row">
-                <label>Номенклатура АГБ <span className="required">*</span>:</label>
+                <label>Номенклатура АГБ:</label>
                 <input
                   type="text"
                   value={formData.nomenclature_agb}
                   onChange={(e) => setFormData({ ...formData, nomenclature_agb: e.target.value })}
-                  required
+                  placeholder="-"
                 />
               </div>
               <div className="form-row">
-                <label>Фасовка для химии, кг. <span className="required">*</span>:</label>
+                <label>Фасовка для химии, кг.:</label>
                 <input
                   type="text"
                   value={formData.packaging}
                   onChange={(e) => setFormData({ ...formData, packaging: e.target.value })}
-                  required
+                  placeholder="-"
                 />
               </div>
             </div>
