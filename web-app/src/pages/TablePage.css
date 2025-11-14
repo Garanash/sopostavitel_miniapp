@@ -457,7 +457,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+  width: 100%;
 }
 
 .mapping-item-main {
@@ -479,7 +480,8 @@
   font-weight: 600;
   font-size: 14px;
   color: var(--tg-theme-hint-color, #999999);
-  min-width: 140px;
+  min-width: 120px;
+  flex-shrink: 0;
 }
 
 .mapping-value {
@@ -501,15 +503,19 @@
 }
 
 .btn-details {
-  padding: 10px 20px;
+  padding: 6px 12px;
   background: var(--tg-theme-button-color, #3390ec);
   color: white;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
+  min-width: 80px;
+  max-width: 100px;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 .btn-details:hover {
@@ -719,6 +725,9 @@
 
   .btn-details {
     width: 100%;
+    max-width: 100%;
+    padding: 8px 12px;
+    font-size: 13px;
   }
 
   .modal-content {

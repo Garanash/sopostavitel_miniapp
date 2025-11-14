@@ -290,7 +290,6 @@ function UploadPage({ userId }) {
                                       setShowRecognitionModal(false)
                                       openModal(result.mapping, result.match_score)
                                     }}
-                                    style={{ fontSize: '12px', padding: '6px 12px' }}
                                   >
                                     Подробнее
                                   </button>
