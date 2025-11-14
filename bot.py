@@ -165,7 +165,12 @@ async def handle_file(message: Message, state: FSMContext):
         # Отправляем файл в API для обработки
         await processing_msg.edit_text("🔍 Отправляю файл на обработку...")
         
-        api_url = f"{Config.API_URL}/api/mappings/upload"
+        # Формируем правильный URL для API
+        api_base = Config.API_URL.rstrip('/')
+        if api_base.endswith('/api'):
+            api_url = f"{api_base}/mappings/upload"
+        else:
+            api_url = f"{api_base}/api/mappings/upload"
         form_data = aiohttp.FormData()
         form_data.add_field('file', 
                           io.BytesIO(file_bytes),
@@ -268,7 +273,12 @@ async def handle_other_messages(message: Message):
     search_msg = await message.answer(f"🔍 Ищу артикул: <code>{search_query}</code>...", parse_mode='HTML')
     
     try:
-        api_url = f"{Config.API_URL}/api/mappings/search"
+        # Формируем правильный URL для API
+        api_base = Config.API_URL.rstrip('/')
+        if api_base.endswith('/api'):
+            api_url = f"{api_base}/mappings/search"
+        else:
+            api_url = f"{api_base}/api/mappings/search"
         params = {
             'query': search_query,
             'min_score': 0,
