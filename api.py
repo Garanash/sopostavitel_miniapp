@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from sqlalchemy import select, func
@@ -1222,7 +1222,7 @@ async def confirm_mapping(
         raise HTTPException(status_code=500, detail=f"Ошибка при подтверждении: {str(e)}")
 
 @app.get("/api/mappings/upload/export/{session_id}")
-async def export_recognition_results(session_id: str):
+async def export_recognition_results(session_id: str, background_tasks: BackgroundTasks):
     """Выгрузка результатов распознавания в Excel"""
     try:
         results_file = os.path.join(Config.TEMP_DIR, f"results_{session_id}.json")
@@ -1300,29 +1300,30 @@ async def export_recognition_results(session_id: str):
             ws.append(row)
         
         # Сохраняем во временный файл
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx', dir=Config.TEMP_DIR)
         temp_file_path = temp_file.name
         temp_file.close()
+        
+        # Убеждаемся, что директория существует
+        os.makedirs(Config.TEMP_DIR, exist_ok=True)
+        
         wb.save(temp_file_path)
         
-        # Используем StreamingResponse для отправки файла
-        def generate():
-            with open(temp_file_path, 'rb') as f:
-                while True:
-                    chunk = f.read(8192)
-                    if not chunk:
-                        break
-                    yield chunk
-            # Удаляем файл после отправки
+        # Используем FileResponse для отправки файла (проще и надежнее)
+        # Добавляем задачу на удаление файла после отправки
+        def cleanup_file():
             try:
-                os.unlink(temp_file_path)
-            except:
-                pass
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+            except Exception as e:
+                print(f"Ошибка при удалении временного файла: {e}")
         
-        return StreamingResponse(
-            generate(),
+        background_tasks.add_task(cleanup_file)
+        
+        return FileResponse(
+            temp_file_path,
             media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            headers={"Content-Disposition": f"attachment; filename=results_{session_id}.xlsx"}
+            filename=f"results_{session_id}.xlsx"
         )
         
     except Exception as e:
