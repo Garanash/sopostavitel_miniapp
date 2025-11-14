@@ -1,5 +1,7 @@
 import asyncio
 import os
+import aiohttp
+import io
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import Message, FSInputFile
@@ -130,8 +132,8 @@ async def cmd_web(message: Message):
 
 @dp.message(F.photo | F.document)
 async def handle_file(message: Message, state: FSMContext):
-    """Обработка файлов от пользователя"""
-    await message.answer("⏳ Обрабатываю файл...")
+    """Обработка файлов от пользователя через API"""
+    processing_msg = await message.answer("⏳ Обрабатываю файл...")
     
     try:
         # Определяем тип файла и получаем файл
@@ -146,13 +148,13 @@ async def handle_file(message: Message, state: FSMContext):
             
             # Проверка типа файла
             if file_type not in Config.SUPPORTED_IMAGE_TYPES + Config.SUPPORTED_DOCUMENT_TYPES:
-                await message.answer(
+                await processing_msg.edit_text(
                     f"❌ Неподдерживаемый тип файла: {file_type}\n"
                     f"Поддерживаются: изображения (JPG, PNG), PDF, Excel, Word"
                 )
                 return
         else:
-            await message.answer("❌ Не удалось определить тип файла")
+            await processing_msg.edit_text("❌ Не удалось определить тип файла")
             return
         
         # Скачиваем файл
@@ -160,111 +162,183 @@ async def handle_file(message: Message, state: FSMContext):
         file_data = await bot.download_file(file_info.file_path)
         file_bytes = await file_data.read()
         
-        # Сохраняем файл
-        file_path = await file_processor.save_file(file_bytes, file_name)
+        # Отправляем файл в API для обработки
+        await processing_msg.edit_text("🔍 Отправляю файл на обработку...")
         
-        # Извлекаем текст
-        await message.answer("🔍 Извлекаю текст из файла...")
-        extracted_text = await file_processor.process_file(file_path, file_type)
+        api_url = f"{Config.API_URL}/api/mappings/upload"
+        form_data = aiohttp.FormData()
+        form_data.add_field('file', 
+                          io.BytesIO(file_bytes),
+                          filename=file_name,
+                          content_type=file_type)
         
-        if not extracted_text.strip():
-            await message.answer("⚠️ Не удалось извлечь текст из файла. Попробуйте другой файл.")
-            return
-        
-        # Получаем артикулы из базы данных
-        from database import async_session_maker
-        async with async_session_maker() as session:
-            result = await session.execute(select(Article))
-            articles = result.scalars().all()
-            article_numbers = [article.article_number for article in articles]
-        
-        if not article_numbers:
-            await message.answer(
-                "⚠️ База данных артикулов пуста. "
-                "Добавьте артикулы через веб-интерфейс или API."
-            )
-            return
-        
-        # Ищем совпадения
-        await message.answer("🔎 Ищу артикулы в документе...")
-        matches = file_processor.extract_article_numbers(extracted_text, article_numbers)
-        
-        # Сохраняем результат в базу данных
-        from database import async_session_maker
-        processed_file_id = None
-        async with async_session_maker() as session:
-            processed_file = ProcessedFile(
-                user_id=message.from_user.id,
-                file_name=file_name,
-                file_type=file_type,
-                file_path=file_path,
-                extracted_text=extracted_text[:10000],  # Ограничиваем размер
-                matched_articles=json.dumps(matches, ensure_ascii=False),
-                status="completed"
-            )
-            session.add(processed_file)
-            await session.commit()
-            await session.refresh(processed_file)
-            processed_file_id = processed_file.id
-            
-            # Сохраняем детали совпадений
-            for match in matches:
-                # Находим артикул в базе
-                article_result = await session.execute(
-                    select(Article).where(Article.article_number == match["article"])
-                )
-                article = article_result.scalar_one_or_none()
+        async with aiohttp.ClientSession() as session:
+            async with session.post(api_url, data=form_data, timeout=aiohttp.ClientTimeout(total=300)) as resp:
+                if resp.status != 200:
+                    error_text = await resp.text()
+                    await processing_msg.edit_text(f"❌ Ошибка API: {error_text}")
+                    return
                 
-                if article:
-                    matched_article = MatchedArticle(
-                        processed_file_id=processed_file.id,
-                        article_id=article.id,
-                        found_text=match["found_text"],
-                        confidence=match["confidence"]
-                    )
-                    session.add(matched_article)
-            
-            await session.commit()
+                result = await resp.json()
         
-        # Формируем ответ
-        if matches:
-            response = f"✅ Найдено совпадений: {len(matches)}\n\n"
-            for i, match in enumerate(matches[:10], 1):  # Показываем первые 10
-                response += f"{i}. Артикул: {match['article']}\n"
-                response += f"   Контекст: {match['found_text'][:100]}...\n"
-                response += f"   Уверенность: {int(match['confidence'] * 100)}%\n\n"
+        # Формируем ответ с результатами
+        all_results = result.get('results', [])
+        matches_count = result.get('matches_count', 0)
+        recognized_count = result.get('recognized_count', 0)
+        
+        if not all_results:
+            await processing_msg.edit_text(
+                f"✅ Обработано строк: {recognized_count}\n"
+                f"❌ Совпадений не найдено"
+            )
+            return
+        
+        # Формируем таблицу результатов
+        response_text = f"<b>📊 Результаты обработки файла</b>\n\n"
+        response_text += f"Обработано строк: <b>{recognized_count}</b>\n"
+        response_text += f"Найдено совпадений: <b>{matches_count}</b>\n\n"
+        response_text += f"<b>📋 Таблица результатов:</b>\n"
+        response_text += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        
+        # Показываем первые 20 результатов
+        shown_count = min(20, len(all_results))
+        for i, item in enumerate(all_results[:shown_count], 1):
+            recognized = item.get('recognized_text', '-')
+            has_match = item.get('mapping') and item.get('match_score') is not None
             
-            if len(matches) > 10:
-                response += f"... и еще {len(matches) - 10} совпадений\n"
-            
-            response += f"\n🌐 Откройте веб-интерфейс для детального просмотра"
+            if has_match:
+                mapping = item.get('mapping', {})
+                article_agb = mapping.get('article_agb') or '-'
+                nomenclature_agb = mapping.get('nomenclature_agb') or '-'
+                match_score = item.get('match_score', 0)
+                
+                response_text += f"<b>{i}.</b> <code>{recognized[:30]}</code>\n"
+                response_text += f"   ➜ <b>Найдено:</b> {article_agb} / {nomenclature_agb[:30]}\n"
+                response_text += f"   ➜ <b>Совпадение:</b> {match_score:.1f}%\n\n"
+            else:
+                response_text += f"<b>{i}.</b> <code>{recognized[:30]}</code>\n"
+                response_text += f"   ➜ <b>Не найдено</b>\n\n"
+        
+        if len(all_results) > shown_count:
+            response_text += f"\n... и еще {len(all_results) - shown_count} строк\n"
+        
+        # Отправляем результаты частями (Telegram ограничение 4096 символов)
+        max_length = 4000
+        if len(response_text) > max_length:
+            # Отправляем первую часть
+            await processing_msg.edit_text(response_text[:max_length] + "...", parse_mode='HTML')
+            # Отправляем остальное
+            remaining = response_text[max_length:]
+            chunks = [remaining[i:i+max_length] for i in range(0, len(remaining), max_length)]
+            for chunk in chunks:
+                await message.answer(chunk, parse_mode='HTML')
         else:
-            response = "❌ Артикулы из базы данных не найдены в документе."
+            await processing_msg.edit_text(response_text, parse_mode='HTML')
         
-        await message.answer(response)
-        
-        # Предлагаем открыть веб-интерфейс (если есть совпадения и файл сохранен)
-        if matches and processed_file_id:
-            webapp_url = f"{Config.WEB_APP_URL}?user_id={message.from_user.id}&file_id={processed_file_id}"
-            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[
-                types.InlineKeyboardButton(text="🌐 Открыть детали", web_app=types.WebAppInfo(url=webapp_url))
-            ]])
-            await message.answer("Нажмите для просмотра деталей:", reply_markup=keyboard)
+        # Предлагаем открыть веб-интерфейс
+        webapp_url = f"{Config.WEB_APP_URL}?user_id={message.from_user.id}"
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[
+            types.InlineKeyboardButton(text="🌐 Открыть веб-интерфейс", web_app=types.WebAppInfo(url=webapp_url))
+        ]])
+        await message.answer("💡 Для просмотра всех результатов используйте веб-интерфейс:", reply_markup=keyboard)
         
     except Exception as e:
-        await message.answer(f"❌ Ошибка при обработке файла: {str(e)}")
+        await processing_msg.edit_text(f"❌ Ошибка при обработке файла: {str(e)}")
         print(f"Ошибка обработки файла: {e}")
+        import traceback
+        traceback.print_exc()
 
 @dp.message()
 async def handle_other_messages(message: Message):
-    """Обработка прочих сообщений"""
-    await message.answer(
-        "Отправьте мне файл для обработки или используйте команды:\n\n"
-        "<b>/start</b> - Начать работу\n"
-        "<b>/help</b> - Подробная инструкция\n"
-        "<b>/web</b> - Открыть веб-интерфейс",
-        parse_mode='HTML'
-    )
+    """Обработка текстовых сообщений - поиск артикула"""
+    search_query = message.text.strip()
+    
+    if not search_query or len(search_query) < 2:
+        await message.answer(
+            "Отправьте мне файл для обработки или используйте команды:\n\n"
+            "<b>/start</b> - Начать работу\n"
+            "<b>/help</b> - Подробная инструкция\n"
+            "<b>/web</b> - Открыть веб-интерфейс\n\n"
+            "Или введите артикул для поиска в базе данных.",
+            parse_mode='HTML'
+        )
+        return
+    
+    # Ищем артикул в базе данных через API
+    search_msg = await message.answer(f"🔍 Ищу артикул: <code>{search_query}</code>...", parse_mode='HTML')
+    
+    try:
+        api_url = f"{Config.API_URL}/api/mappings/search"
+        params = {
+            'query': search_query,
+            'min_score': 0,
+            'limit': 20
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(api_url, params=params, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                if resp.status != 200:
+                    error_text = await resp.text()
+                    await search_msg.edit_text(f"❌ Ошибка API: {error_text}")
+                    return
+                
+                results = await resp.json()
+        
+        # Фильтруем только записи с артикулом АГБ
+        filtered_results = [r for r in results if r.get('mapping', {}).get('article_agb')]
+        
+        if not filtered_results:
+            await search_msg.edit_text(
+                f"❌ <b>Артикул не найден</b>\n\n"
+                f"По запросу <code>{search_query}</code> ничего не найдено в базе данных.\n\n"
+                f"Попробуйте:\n"
+                f"• Проверить правильность написания\n"
+                f"• Использовать веб-интерфейс для детального поиска",
+                parse_mode='HTML'
+            )
+            return
+        
+        # Формируем ответ с результатами
+        response_text = f"<b>🔍 Результаты поиска:</b> <code>{search_query}</code>\n\n"
+        response_text += f"Найдено совпадений: <b>{len(filtered_results)}</b>\n\n"
+        
+        # Показываем первые 10 результатов
+        for i, item in enumerate(filtered_results[:10], 1):
+            mapping = item.get('mapping', {})
+            match_score = item.get('match_score', 0)
+            article_agb = mapping.get('article_agb') or '-'
+            nomenclature_agb = mapping.get('nomenclature_agb') or '-'
+            
+            response_text += f"<b>{i}.</b> <code>{article_agb}</code>\n"
+            response_text += f"   {nomenclature_agb[:50]}\n"
+            response_text += f"   ➜ <b>Совпадение:</b> {match_score:.1f}%\n\n"
+        
+        if len(filtered_results) > 10:
+            response_text += f"\n... и еще {len(filtered_results) - 10} совпадений\n"
+        
+        # Отправляем результаты
+        max_length = 4000
+        if len(response_text) > max_length:
+            await search_msg.edit_text(response_text[:max_length] + "...", parse_mode='HTML')
+            remaining = response_text[max_length:]
+            chunks = [remaining[i:i+max_length] for i in range(0, len(remaining), max_length)]
+            for chunk in chunks:
+                await message.answer(chunk, parse_mode='HTML')
+        else:
+            await search_msg.edit_text(response_text, parse_mode='HTML')
+        
+        # Предлагаем открыть веб-интерфейс для детального просмотра
+        webapp_url = f"{Config.WEB_APP_URL}?user_id={message.from_user.id}"
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[
+            types.InlineKeyboardButton(text="🌐 Открыть веб-интерфейс", web_app=types.WebAppInfo(url=webapp_url))
+        ]])
+        await message.answer("💡 Для просмотра подробной информации используйте веб-интерфейс:", reply_markup=keyboard)
+        
+    except Exception as e:
+        await search_msg.edit_text(f"❌ Ошибка при поиске: {str(e)}")
+        print(f"Ошибка поиска артикула: {e}")
+        import traceback
+        traceback.print_exc()
 
 async def main():
     """Главная функция запуска бота"""
