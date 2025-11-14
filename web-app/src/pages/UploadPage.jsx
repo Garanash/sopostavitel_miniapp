@@ -235,7 +235,7 @@ function UploadPage({ userId }) {
       </div>
 
       {/* Модальное окно с результатами распознавания */}
-      {showRecognitionModal && (
+      {showRecognitionModal && recognitionResults.length > 0 && (
         <div className="modal-overlay" onClick={() => setShowRecognitionModal(false)}>
           <div className="modal-content recognition-modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
@@ -283,10 +283,11 @@ function UploadPage({ userId }) {
                             </td>
                             <td className="actions-cell">
                               {hasMatch && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div className="actions-buttons-container">
                                   <button
                                     className="btn-details"
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                      e.stopPropagation()
                                       setShowRecognitionModal(false)
                                       openModal(result.mapping, result.match_score)
                                     }}
@@ -295,20 +296,18 @@ function UploadPage({ userId }) {
                                   </button>
                                   <button
                                     className={`btn-confirm ${result.is_confirmed ? 'confirmed' : ''}`}
-                                    onClick={() => handleConfirmMapping(result)}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleConfirmMapping(result)
+                                    }}
                                     disabled={confirmingIds.has(`${result.recognized_text}_${result.mapping_id}`) || result.is_confirmed}
                                     style={{
-                                      fontSize: '12px',
-                                      padding: '6px 12px',
                                       background: result.is_confirmed 
                                         ? 'var(--tg-theme-button-color, #3390ec)' 
                                         : 'var(--tg-theme-secondary-bg-color, #f5f5f5)',
                                       color: result.is_confirmed ? 'white' : 'var(--tg-theme-text-color, #000)',
                                       border: result.is_confirmed ? 'none' : '1px solid var(--tg-theme-hint-color, #e0e0e0)',
-                                      borderRadius: '6px',
                                       cursor: result.is_confirmed ? 'default' : 'pointer',
-                                      fontWeight: '600',
-                                      whiteSpace: 'nowrap',
                                       opacity: confirmingIds.has(`${result.recognized_text}_${result.mapping_id}`) ? 0.6 : 1
                                     }}
                                   >

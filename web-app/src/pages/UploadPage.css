@@ -229,6 +229,18 @@
 .recognition-results-table .actions-cell {
   min-width: 120px;
   text-align: center;
+  position: sticky;
+  right: 0;
+  background: var(--tg-theme-bg-color, #ffffff);
+  z-index: 5;
+}
+
+.actions-buttons-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+  min-width: 90px;
 }
 
 .recognition-results-list {
@@ -284,6 +296,102 @@
   flex: 1;
 }
 
+/* Мобильная адаптация */
+@media (max-width: 768px) {
+  .recognition-modal-content {
+    max-width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+    margin: 0;
+  }
+
+  .modal-header {
+    padding: 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .modal-header h2 {
+    font-size: 16px;
+    flex: 1;
+    min-width: 100%;
+  }
+
+  .modal-body {
+    padding: 12px;
+  }
+
+  .recognition-results-table-container {
+    max-height: calc(100vh - 200px);
+    margin: -12px;
+    padding: 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .recognition-results-table {
+    font-size: 12px;
+    min-width: 600px; /* Минимальная ширина для горизонтального скролла */
+  }
+
+  .recognition-results-table th,
+  .recognition-results-table td {
+    padding: 8px;
+    font-size: 12px;
+  }
+
+  .recognition-results-table .search-text {
+    max-width: 150px;
+    font-size: 11px;
+  }
+
+  .recognition-results-table .found-text {
+    max-width: 180px;
+    font-size: 11px;
+  }
+
+  .recognition-results-table .match-score-cell {
+    min-width: 60px;
+    font-size: 11px;
+  }
+
+  .recognition-results-table .actions-cell {
+    min-width: 100px;
+    position: sticky;
+    right: 0;
+    background: var(--tg-theme-bg-color, #ffffff);
+    z-index: 5;
+    padding: 8px 4px;
+  }
+
+  .recognition-results-table .actions-cell > div {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: stretch;
+  }
+
+  .recognition-results-table .btn-details,
+  .recognition-results-table .btn-confirm {
+    width: 100%;
+    max-width: 100%;
+    padding: 8px 10px;
+    font-size: 11px;
+    min-width: auto;
+  }
+
+  .modal-close {
+    font-size: 28px;
+    width: 28px;
+    height: 28px;
+  }
+
+  .btn-primary {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+}
+
 .btn-details {
   padding: 6px 12px;
   background: var(--tg-theme-button-color, #3390ec);
@@ -305,15 +413,20 @@
 }
 
 .btn-confirm {
-  padding: 10px 20px;
+  padding: 6px 12px;
   background: var(--tg-theme-secondary-bg-color, #f5f5f5);
   color: var(--tg-theme-text-color, #000);
   border: 1px solid var(--tg-theme-hint-color, #e0e0e0);
   border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
+  min-width: 80px;
+  max-width: 100px;
+  text-align: center;
+  flex-shrink: 0;
+  width: 100%;
 }
 
 .btn-confirm.confirmed {
