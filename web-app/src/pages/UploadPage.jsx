@@ -304,22 +304,42 @@ function UploadPage({ userId }) {
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                 {recognitionResults.length > 0 && sessionId && (
                   <>
-                    <button className="btn-primary" onClick={handleExportResults} style={{ margin: 0 }}>
-                      📥 Выгрузить в Excel
-                    </button>
-                    <label className="btn-primary" style={{ margin: 0, cursor: 'pointer' }}>
-                      📤 Загрузить исправления
+                    <button 
+                  className="btn-primary" 
+                  onClick={handleExportResults} 
+                  style={{ margin: 0 }}
+                  aria-label="Выгрузить результаты в Excel"
+                >
+                  📥 Выгрузить в Excel
+                </button>
+                    <label 
+                      className="btn-primary" 
+                      style={{ 
+                        margin: 0, 
+                        cursor: uploadingConfirmations ? 'wait' : 'pointer',
+                        opacity: uploadingConfirmations ? 0.6 : 1
+                      }}
+                      aria-label="Загрузить файл с исправленными сопоставлениями"
+                    >
+                      {uploadingConfirmations ? '⏳ Загрузка...' : '📤 Загрузить исправления'}
                       <input
                         type="file"
                         accept=".xlsx,.xls"
                         onChange={handleUploadConfirmations}
                         disabled={uploadingConfirmations}
                         style={{ display: 'none' }}
+                        aria-label="Выбрать файл с исправлениями"
                       />
                     </label>
                   </>
                 )}
-                <button className="modal-close" onClick={() => setShowRecognitionModal(false)}>×</button>
+                <button 
+                className="modal-close" 
+                onClick={() => setShowRecognitionModal(false)}
+                aria-label="Закрыть модальное окно"
+              >
+                ×
+              </button>
               </div>
             </div>
             <div className="modal-body">
@@ -419,7 +439,13 @@ function UploadPage({ userId }) {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Подробная информация</h2>
-              <button className="modal-close" onClick={closeModal}>×</button>
+              <button 
+                className="modal-close" 
+                onClick={closeModal}
+                aria-label="Закрыть подробную информацию"
+              >
+                ×
+              </button>
             </div>
             <div className="modal-body">
               {selectedMapping.matchScore !== null && (

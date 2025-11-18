@@ -370,8 +370,23 @@ async def main():
     
     # Запуск бота с очисткой старых обновлений
     print("Бот запущен...")
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot, drop_pending_updates=True)
+    try:
+        # Удаляем webhook, если он был установлен
+        await bot.delete_webhook(drop_pending_updates=True)
+        print("Webhook удален, запускаю polling...")
+        
+        # Запускаем polling
+        await dp.start_polling(bot, drop_pending_updates=True)
+    except Exception as e:
+        print(f"❌ Критическая ошибка при запуске бота: {e}")
+        print("💡 Возможные причины:")
+        print("   1. Другой экземпляр бота уже запущен")
+        print("   2. Проблемы с токеном бота")
+        print("   3. Проблемы с сетью")
+        print("\n🔧 Решение:")
+        print("   - Запустите скрипт stop_all.sh для остановки всех процессов")
+        print("   - Проверьте, что только один экземпляр бота запущен")
+        raise
 
 if __name__ == "__main__":
     asyncio.run(main())

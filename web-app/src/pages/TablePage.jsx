@@ -272,17 +272,21 @@ function TablePage() {
     <div className="table-page">
       <div className="table-controls">
         <div className="action-buttons">
-          <button className="btn-primary" onClick={() => {
-            if (showAddForm && !editingId) {
-              setShowAddForm(false)
-              resetForm()
-            } else if (!showAddForm) {
-              setShowAddForm(true)
-              setEditingId(null)
-              resetForm()
-            }
-          }}>
-            ➕ Добавить строку
+          <button 
+            className="btn-primary" 
+            onClick={() => {
+              if (showAddForm && !editingId) {
+                setShowAddForm(false)
+                resetForm()
+              } else if (!showAddForm) {
+                setShowAddForm(true)
+                setEditingId(null)
+                resetForm()
+              }
+            }}
+            aria-label={showAddForm && !editingId ? "Закрыть форму добавления" : "Добавить новую строку"}
+          >
+            {showAddForm && !editingId ? '✖️ Отмена' : '➕ Добавить строку'}
           </button>
         </div>
       </div>
@@ -476,6 +480,7 @@ function TablePage() {
                   <button
                     className="btn-details"
                     onClick={() => openModal(m, matchScore)}
+                    aria-label={`Подробная информация о записи ${m.id}`}
                   >
                     Подробнее
                   </button>
@@ -520,7 +525,13 @@ function TablePage() {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Подробная информация</h2>
-              <button className="modal-close" onClick={closeModal}>×</button>
+              <button 
+                className="modal-close" 
+                onClick={closeModal}
+                aria-label="Закрыть подробную информацию"
+              >
+                ×
+              </button>
             </div>
             <div className="modal-body">
               {selectedMapping.matchScore !== null && (

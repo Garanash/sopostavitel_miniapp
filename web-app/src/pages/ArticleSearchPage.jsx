@@ -78,10 +78,17 @@ function ArticleSearchPage() {
             placeholder="Введите артикул для поиска..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+            onKeyPress={(e) => e.key === 'Enter' && !loading && handleSearch()}
+            aria-label="Поле поиска артикула"
+            disabled={loading}
           />
-          <button className="search-button" onClick={handleSearch} disabled={loading}>
-            🔍 Поиск
+          <button 
+            className="search-button" 
+            onClick={handleSearch} 
+            disabled={loading}
+            aria-label="Выполнить поиск"
+          >
+            {loading ? '⏳ Поиск...' : '🔍 Поиск'}
           </button>
         </div>
         <div className="min-score-control">
@@ -137,6 +144,7 @@ function ArticleSearchPage() {
                     <button
                       className="btn-details"
                       onClick={() => openModal(m, matchScore)}
+                      aria-label={`Подробная информация о ${m.article_agb || m.article_bl || 'записи'}`}
                     >
                       Подробнее
                     </button>
@@ -154,7 +162,13 @@ function ArticleSearchPage() {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Подробная информация</h2>
-              <button className="modal-close" onClick={closeModal}>×</button>
+              <button 
+                className="modal-close" 
+                onClick={closeModal}
+                aria-label="Закрыть подробную информацию"
+              >
+                ×
+              </button>
             </div>
             <div className="modal-body">
               {selectedMapping.matchScore !== null && (

@@ -40,10 +40,22 @@ body {
 .btn:hover {
   opacity: 0.9;
   transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .btn:active {
   transform: translateY(0);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--tg-theme-button-color, #3390ec);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .btn-secondary {
@@ -78,6 +90,18 @@ body {
 .input:focus {
   outline: none;
   border-color: var(--tg-theme-button-color, #3390ec);
+  box-shadow: 0 0 0 3px rgba(51, 144, 236, 0.1);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--tg-theme-button-color, #3390ec);
+  outline-offset: 2px;
+}
+
+.input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
 }
 
 .label {
@@ -163,14 +187,30 @@ body {
   border: none;
   cursor: pointer;
   font-size: 16px;
+  font-weight: 500;
   color: var(--tg-theme-hint-color, #999999);
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.tab:hover {
+  color: var(--tg-theme-text-color, #000000);
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+  border-radius: 8px 8px 0 0;
 }
 
 .tab.active {
   color: var(--tg-theme-button-color, #3390ec);
   border-bottom-color: var(--tg-theme-button-color, #3390ec);
+  font-weight: 600;
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--tg-theme-button-color, #3390ec);
+  outline-offset: -2px;
+  border-radius: 8px 8px 0 0;
 }
 
 .file-upload {
