@@ -1331,6 +1331,132 @@ async def export_recognition_results(session_id: str, background_tasks: Backgrou
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Ошибка при выгрузке: {str(e)}")
 
+@app.post("/api/mappings/upload-confirmations")
+async def upload_confirmations_file(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Загрузка Excel файла с подтвержденными сопоставлениями для массового обновления"""
+    try:
+        # Проверяем, что это Excel файл
+        if not (file.filename and file.filename.lower().endswith(('.xlsx', '.xls'))):
+            raise HTTPException(status_code=400, detail="Поддерживаются только Excel файлы (.xlsx, .xls)")
+        
+        # Сохраняем файл
+        file_bytes = await file.read()
+        file_path = await file_processor.save_file(file_bytes, file.filename)
+        
+        # Загружаем Excel файл
+        workbook = openpyxl.load_workbook(file_path, data_only=True)
+        sheet = workbook.active
+        
+        # Ищем заголовки
+        header_row = 1
+        headers = {}
+        for col_idx, cell in enumerate(sheet[header_row], start=1):
+            cell_value = str(cell.value).lower() if cell.value else ''
+            if 'распознанный' in cell_value or 'текст' in cell_value or 'что искалось' in cell_value:
+                headers['recognized_text'] = col_idx
+            elif 'id' in cell_value and 'соответствия' in cell_value or 'mapping_id' in cell_value:
+                headers['mapping_id'] = col_idx
+            elif 'совпадение' in cell_value or 'процент' in cell_value or 'match_score' in cell_value:
+                headers['match_score'] = col_idx
+        
+        if 'recognized_text' not in headers or 'mapping_id' not in headers:
+            raise HTTPException(
+                status_code=400, 
+                detail="Файл должен содержать колонки: 'Распознанный текст' (или 'Что искалось') и 'ID соответствия'"
+            )
+        
+        # Обрабатываем строки
+        confirmed_count = 0
+        errors = []
+        
+        for row_idx, row in enumerate(sheet.iter_rows(min_row=header_row + 1, values_only=True), start=header_row + 1):
+            try:
+                # Получаем значения из нужных колонок
+                recognized_text_col = headers['recognized_text'] - 1
+                mapping_id_col = headers['mapping_id'] - 1
+                match_score_col = headers.get('match_score', 0) - 1 if 'match_score' in headers else None
+                
+                if recognized_text_col >= len(row) or mapping_id_col >= len(row):
+                    continue
+                
+                recognized_text = str(row[recognized_text_col]).strip() if row[recognized_text_col] else None
+                mapping_id_str = str(row[mapping_id_col]).strip() if row[mapping_id_col] else None
+                match_score = None
+                
+                if match_score_col is not None and match_score_col >= 0 and match_score_col < len(row):
+                    try:
+                        match_score = float(row[match_score_col]) if row[match_score_col] else None
+                    except (ValueError, TypeError):
+                        match_score = None
+                
+                if not recognized_text or not mapping_id_str:
+                    continue
+                
+                # Парсим mapping_id
+                try:
+                    mapping_id = int(float(mapping_id_str))
+                except (ValueError, TypeError):
+                    errors.append(f"Строка {row_idx}: неверный ID соответствия '{mapping_id_str}'")
+                    continue
+                
+                # Проверяем, существует ли mapping
+                mapping_result = await db.execute(
+                    select(ProductMapping).where(ProductMapping.id == mapping_id)
+                )
+                mapping = mapping_result.scalar_one_or_none()
+                
+                if not mapping:
+                    errors.append(f"Строка {row_idx}: сопоставление с ID {mapping_id} не найдено")
+                    continue
+                
+                # Создаем или обновляем подтверждение
+                existing = await db.execute(
+                    select(ConfirmedMapping).where(
+                        ConfirmedMapping.recognized_text == recognized_text,
+                        ConfirmedMapping.mapping_id == mapping_id
+                    )
+                )
+                confirmed = existing.scalar_one_or_none()
+                
+                if confirmed:
+                    confirmed.user_confirmed += 1
+                    if match_score is not None:
+                        confirmed.match_score = match_score
+                    confirmed.updated_at = datetime.utcnow()
+                else:
+                    confirmed = ConfirmedMapping(
+                        recognized_text=recognized_text,
+                        mapping_id=mapping_id,
+                        match_score=match_score or 100.0,
+                        user_confirmed=1
+                    )
+                    db.add(confirmed)
+                
+                confirmed_count += 1
+                
+            except Exception as e:
+                errors.append(f"Строка {row_idx}: ошибка обработки - {str(e)}")
+                continue
+        
+        await db.commit()
+        
+        return {
+            "message": f"Обработано подтверждений: {confirmed_count}",
+            "confirmed_count": confirmed_count,
+            "errors": errors[:10] if errors else [],  # Первые 10 ошибок
+            "errors_count": len(errors)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Ошибка при обработке файла: {str(e)}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -456,6 +456,10 @@ function TablePage() {
                       <span className="mapping-label">Номенклатура АГБ:</span>
                       <span className="mapping-value">{m.nomenclature_agb || '-'}</span>
                     </div>
+                    <div className="mapping-article-bl">
+                      <span className="mapping-label">Артикул BL:</span>
+                      <span className="mapping-value">{m.article_bl || '-'}</span>
+                    </div>
                     <div className="mapping-article-agb">
                       <span className="mapping-label">Артикул АГБ:</span>
                       <span className="mapping-value">{m.article_agb || '-'}</span>

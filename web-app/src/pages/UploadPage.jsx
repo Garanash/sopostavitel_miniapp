@@ -13,6 +13,7 @@ function UploadPage({ userId }) {
   const [confirmingIds, setConfirmingIds] = useState(new Set())
   const [selectedMapping, setSelectedMapping] = useState(null)
   const [showModal, setShowModal] = useState(false)
+  const [uploadingConfirmations, setUploadingConfirmations] = useState(false)
 
   const onDrop = useCallback(async (acceptedFiles) => {
     if (acceptedFiles.length === 0) return
@@ -149,7 +150,8 @@ function UploadPage({ userId }) {
         timeout: 60000
       })
 
-      const url = window.URL.createObjectURL(new Blob([response.data]))
+      // response.data уже является Blob, не нужно создавать новый
+      const url = window.URL.createObjectURL(response.data)
       const link = document.createElement('a')
       link.href = url
       link.setAttribute('download', `results_${sessionId}.xlsx`)
@@ -184,6 +186,65 @@ function UploadPage({ userId }) {
   const openModal = (mapping, matchScore = null) => {
     setSelectedMapping({ mapping, matchScore })
     setShowModal(true)
+    // Не закрываем модальное окно с результатами
+  }
+
+  const closeModal = () => {
+    setShowModal(false)
+    setSelectedMapping(null)
+    // Возвращаемся к таблице результатов
+    if (recognitionResults.length > 0) {
+      setShowRecognitionModal(true)
+    }
+  }
+
+  const handleUploadConfirmations = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.name.toLowerCase().endsWith('.xlsx') && !file.name.toLowerCase().endsWith('.xls')) {
+      alert('Поддерживаются только Excel файлы (.xlsx, .xls)')
+      return
+    }
+
+    setUploadingConfirmations(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await axios.post('/api/mappings/upload-confirmations', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 300000,
+      })
+
+      let message = `✅ ${response.data.message}`
+      if (response.data.errors_count > 0) {
+        message += `\n\nОшибок: ${response.data.errors_count}`
+        if (response.data.errors.length > 0) {
+          message += `\n\nПервые ошибки:\n${response.data.errors.slice(0, 5).join('\n')}`
+        }
+      }
+      alert(message)
+      
+      // Очищаем input
+      event.target.value = ''
+    } catch (err) {
+      let errorMessage = 'Ошибка при загрузке файла'
+      if (err.response?.data) {
+        if (typeof err.response.data.detail === 'string') {
+          errorMessage = err.response.data.detail
+        } else if (err.response.data.detail?.msg) {
+          errorMessage = err.response.data.detail.msg
+        }
+      } else if (err.message) {
+        errorMessage = err.message
+      }
+      alert(`❌ ${errorMessage}`)
+    } finally {
+      setUploadingConfirmations(false)
+    }
   }
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -240,11 +301,23 @@ function UploadPage({ userId }) {
           <div className="modal-content recognition-modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Результаты обработки файла ({recognitionResults.length})</h2>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                 {recognitionResults.length > 0 && sessionId && (
-                  <button className="btn-primary" onClick={handleExportResults} style={{ margin: 0 }}>
-                    📥 Выгрузить в Excel
-                  </button>
+                  <>
+                    <button className="btn-primary" onClick={handleExportResults} style={{ margin: 0 }}>
+                      📥 Выгрузить в Excel
+                    </button>
+                    <label className="btn-primary" style={{ margin: 0, cursor: 'pointer' }}>
+                      📤 Загрузить исправления
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls"
+                        onChange={handleUploadConfirmations}
+                        disabled={uploadingConfirmations}
+                        style={{ display: 'none' }}
+                      />
+                    </label>
+                  </>
                 )}
                 <button className="modal-close" onClick={() => setShowRecognitionModal(false)}>×</button>
               </div>
@@ -264,8 +337,16 @@ function UploadPage({ userId }) {
                     <tbody>
                       {recognitionResults.map((result, idx) => {
                         const hasMatch = result.mapping && result.match_score !== null && result.match_score !== undefined
+                        // По умолчанию показываем артикул BL, если нет BL - показываем артикул АГБ
+                        const displayArticle = hasMatch 
+                          ? (result.mapping.article_bl && result.mapping.article_bl.trim() !== '' && result.mapping.article_bl !== '-'
+                              ? result.mapping.article_bl
+                              : (result.mapping.article_agb && result.mapping.article_agb.trim() !== '' && result.mapping.article_agb !== '-'
+                                  ? result.mapping.article_agb
+                                  : '-'))
+                          : null
                         const foundText = hasMatch 
-                          ? `${result.mapping.article_agb || '-'} / ${result.mapping.nomenclature_agb || '-'}`
+                          ? `${displayArticle} / ${result.mapping.nomenclature_agb || '-'}`
                           : 'Не найдено'
                         
                         return (
@@ -288,7 +369,7 @@ function UploadPage({ userId }) {
                                     className="btn-details"
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      setShowRecognitionModal(false)
+                                      // Не закрываем модальное окно с результатами, просто открываем подробную информацию поверх
                                       openModal(result.mapping, result.match_score)
                                     }}
                                   >
@@ -334,11 +415,11 @@ function UploadPage({ userId }) {
 
       {/* Модальное окно с подробной информацией */}
       {showModal && selectedMapping && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Подробная информация</h2>
-              <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
+              <button className="modal-close" onClick={closeModal}>×</button>
             </div>
             <div className="modal-body">
               {selectedMapping.matchScore !== null && (

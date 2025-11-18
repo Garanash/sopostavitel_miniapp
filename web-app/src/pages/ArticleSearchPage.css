@@ -91,9 +91,10 @@
 .result-item-content {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   width: 100%;
+  position: relative;
 }
 
 .result-item-main {
@@ -141,10 +142,11 @@
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
-  min-width: 80px;
-  max-width: 100px;
+  width: 100px;
   text-align: center;
   flex-shrink: 0;
+  align-self: flex-start;
+  box-sizing: border-box;
 }
 
 .btn-details:hover {
