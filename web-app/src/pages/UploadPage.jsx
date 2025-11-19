@@ -433,9 +433,9 @@ function UploadPage({ userId }) {
         </div>
       )}
 
-      {/* Модальное окно с подробной информацией */}
+      {/* Модальное окно с подробной информацией - поверх модального окна с результатами */}
       {showModal && selectedMapping && (
-        <div className="modal-overlay" onClick={closeModal}>
+        <div className="modal-overlay" onClick={closeModal} style={{ zIndex: 2000 }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Подробная информация</h2>

@@ -72,6 +72,16 @@
   padding: 20px;
 }
 
+/* Модальное окно с результатами - базовый z-index */
+.recognition-modal-content {
+  z-index: 1000;
+}
+
+/* Модальное окно с подробной информацией - поверх результатов */
+.modal-overlay[style*="z-index: 2000"] {
+  z-index: 2000 !important;
+}
+
 .modal-content {
   background: var(--tg-theme-bg-color, #ffffff);
   border-radius: 12px;

@@ -145,8 +145,9 @@ function ArticleSearchPage() {
                       className="btn-details"
                       onClick={() => openModal(m, matchScore)}
                       aria-label={`Подробная информация о ${m.article_agb || m.article_bl || 'записи'}`}
+                      title="Подробнее"
                     >
-                      Подробнее
+                      ⋯
                     </button>
                   </div>
                 </div>
