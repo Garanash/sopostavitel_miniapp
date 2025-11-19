@@ -674,25 +674,30 @@ async def get_mappings(
     db: AsyncSession = Depends(get_db)
 ):
     """Получение всех строк таблицы с пагинацией"""
-    # Получаем общее количество записей
-    count_result = await db.execute(select(func.count(ProductMapping.id)))
-    total = count_result.scalar()
-    
-    # Получаем данные с пагинацией
-    result = await db.execute(
-        select(ProductMapping)
-        .order_by(ProductMapping.id)
-        .offset(skip)
-        .limit(limit)
-    )
-    mappings = result.scalars().all()
-    
-    return {
-        "items": [ProductMappingResponse.model_validate(m) for m in mappings],
-        "total": total,
-        "skip": skip,
-        "limit": limit
-    }
+    try:
+        # Получаем общее количество записей
+        count_result = await db.execute(select(func.count(ProductMapping.id)))
+        total = count_result.scalar() or 0
+        
+        # Получаем данные с пагинацией
+        result = await db.execute(
+            select(ProductMapping)
+            .order_by(ProductMapping.id)
+            .offset(skip)
+            .limit(limit)
+        )
+        mappings = result.scalars().all()
+        
+        return {
+            "items": [ProductMappingResponse.model_validate(m) for m in mappings],
+            "total": total,
+            "skip": skip,
+            "limit": limit
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Ошибка при загрузке таблицы: {str(e)}")
 
 @app.get("/api/mappings/search", response_model=List[ProductMappingSearchResponse])
 async def search_mappings(
@@ -702,10 +707,14 @@ async def search_mappings(
     db: AsyncSession = Depends(get_db)
 ):
     """Поиск строк с процентом совпадения на основе совпадения слов"""
-    result = await db.execute(select(ProductMapping))
-    all_mappings = result.scalars().all()
-    
-    search_results = []
+    try:
+        if not query or not query.strip():
+            return []
+        
+        result = await db.execute(select(ProductMapping))
+        all_mappings = result.scalars().all()
+        
+        search_results = []
     
     for mapping in all_mappings:
         scores = []
@@ -757,20 +766,24 @@ async def search_mappings(
                     'matched_fields': matched_fields
                 })
     
-    # Сортируем по проценту совпадения (по убыванию)
-    search_results.sort(key=lambda x: x['match_score'], reverse=True)
-    
-    # Ограничиваем количество результатов
-    search_results = search_results[:limit]
-    
-    return [
-        ProductMappingSearchResponse(
-            mapping=ProductMappingResponse.model_validate(item['mapping']),
-            match_score=item['match_score'],
-            matched_fields=item['matched_fields']
-        )
-        for item in search_results
-    ]
+        # Сортируем по проценту совпадения (по убыванию)
+        search_results.sort(key=lambda x: x['match_score'], reverse=True)
+        
+        # Ограничиваем количество результатов
+        search_results = search_results[:limit]
+        
+        return [
+            ProductMappingSearchResponse(
+                mapping=ProductMappingResponse.model_validate(item['mapping']),
+                match_score=item['match_score'],
+                matched_fields=item['matched_fields']
+            )
+            for item in search_results
+        ]
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Ошибка при поиске: {str(e)}")
 
 @app.get("/api/mappings/{mapping_id}", response_model=ProductMappingResponse)
 async def get_mapping(mapping_id: int, db: AsyncSession = Depends(get_db)):
@@ -851,6 +864,7 @@ async def upload_mapping_file(
         # Включаем все обработанные строки, даже если ничего не найдено
         recognition_results = []
         all_processed_items = []  # Все обработанные элементы для отчета
+        lines = None  # Инициализируем переменную для не-Excel файлов
         
         # Если это Excel файл - используем интеллектуальный анализ структуры
         if file.content_type in [
@@ -1024,7 +1038,7 @@ async def upload_mapping_file(
                 traceback.print_exc()
                 # Fallback на обычную обработку
                 extracted_text = await file_processor.process_file(file_path, file.content_type)
-                if not extracted_text.strip():
+                if not extracted_text or not extracted_text.strip():
                     raise HTTPException(status_code=400, detail="Не удалось извлечь текст из файла")
                 
                 lines = [line.strip() for line in extracted_text.split('\n') if line.strip()]
@@ -1032,14 +1046,17 @@ async def upload_mapping_file(
             # Для других типов файлов используем обычную обработку
             extracted_text = await file_processor.process_file(file_path, file.content_type)
             
-            if not extracted_text.strip():
+            if not extracted_text or not extracted_text.strip():
                 raise HTTPException(status_code=400, detail="Не удалось извлечь текст из файла")
             
             # Разбиваем текст на строки (артикулы/названия)
             lines = [line.strip() for line in extracted_text.split('\n') if line.strip()]
         
         # Для не-Excel файлов обрабатываем построчно
-        if 'lines' in locals():
+        # Проверяем, были ли обработаны строки из Excel
+        excel_processed = len(all_processed_items) > 0
+        
+        if not excel_processed and lines:
             for line in lines:
                 if not line or len(line) < 2:
                     continue
@@ -1154,13 +1171,20 @@ async def upload_mapping_file(
         
         # Сохраняем результаты в сессию (можно использовать Redis или БД)
         # Пока сохраняем в файл временно
+        recognized_count = len(all_processed_items)
+        
+        if recognized_count == 0:
+            raise HTTPException(status_code=400, detail="Не удалось обработать файл. Убедитесь, что файл содержит данные.")
+        
         session_id = str(uuid.uuid4())
         results_file = os.path.join(Config.TEMP_DIR, f"results_{session_id}.json")
         os.makedirs(Config.TEMP_DIR, exist_ok=True)
-        with open(results_file, 'w', encoding='utf-8') as f:
-            json.dump(all_processed_items, f, ensure_ascii=False, indent=2)
-        
-        recognized_count = len(all_processed_items)
+        try:
+            with open(results_file, 'w', encoding='utf-8') as f:
+                json.dump(all_processed_items, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Ошибка при сохранении результатов: {e}")
+            # Продолжаем работу даже если не удалось сохранить в файл
         
         return {
             "message": f"Обработано {recognized_count} строк, найдено {len(recognition_results)} совпадений",

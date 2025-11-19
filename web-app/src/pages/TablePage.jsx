@@ -221,9 +221,6 @@ function TablePage() {
       } else {
         await loadMappings()
       }
-      if (searchResults.length > 0) {
-        handleSearch()
-      }
       closeModal()
     } catch (err) {
       let errorMessage = 'Ошибка при удалении'
