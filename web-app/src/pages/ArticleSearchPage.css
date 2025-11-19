@@ -123,9 +123,10 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: 16px;
   width: 100%;
   position: relative;
+  min-height: 60px;
 }
 
 .result-item-main {
@@ -133,6 +134,8 @@
   flex-direction: column;
   gap: 8px;
   flex: 1;
+  min-width: 0; /* Позволяет контенту сжиматься */
+  overflow: hidden; /* Предотвращает переполнение */
 }
 
 .result-article-agb,
@@ -141,6 +144,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0; /* Позволяет элементам сжиматься */
 }
 
 .result-label {
@@ -155,7 +159,10 @@
   font-size: 16px;
   color: var(--tg-theme-text-color, #000);
   word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
   flex: 1;
+  min-width: 0; /* Позволяет тексту переноситься */
 }
 
 .result-article-agb .result-value {
@@ -164,21 +171,26 @@
 }
 
 .btn-details {
-  padding: 6px 12px;
+  padding: 8px 16px;
   background: var(--tg-theme-button-color, #3390ec);
   color: white;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
+  min-width: 100px;
+  max-width: 100px;
   width: 100px;
   text-align: center;
   flex-shrink: 0;
+  flex-grow: 0;
   align-self: flex-start;
   box-sizing: border-box;
   transition: all 0.2s ease;
+  position: relative;
+  z-index: 1;
 }
 
 .btn-details:hover {
