@@ -113,6 +113,9 @@
   border-radius: 8px;
   padding: 16px;
   transition: all 0.2s;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden; /* Предотвращает выход элементов за границы */
 }
 
 .result-item:hover {
@@ -120,12 +123,12 @@
 }
 
 .result-item-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: 1fr auto;
   gap: 16px;
   width: 100%;
-  position: relative;
+  align-items: flex-start;
+  box-sizing: border-box;
   min-height: 60px;
 }
 
@@ -133,8 +136,8 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  flex: 1;
-  min-width: 0; /* Позволяет контенту сжиматься */
+  min-width: 0; /* Критично для grid - позволяет сжиматься */
+  max-width: 100%; /* Не позволяет выходить за границы */
   overflow: hidden; /* Предотвращает переполнение */
 }
 
@@ -153,6 +156,26 @@
   color: var(--tg-theme-hint-color, #999999);
   min-width: 120px;
   flex-shrink: 0;
+  /* На мобильных устройствах уменьшаем минимальную ширину */
+}
+
+@media (max-width: 480px) {
+  .result-label {
+    min-width: 100px;
+    font-size: 13px;
+  }
+  
+  .btn-details {
+    width: 90px;
+    min-width: 90px;
+    max-width: 90px;
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+  
+  .result-item-content {
+    gap: 12px;
+  }
 }
 
 .result-value {
@@ -171,26 +194,26 @@
 }
 
 .btn-details {
-  padding: 8px 16px;
+  padding: 8px 12px;
   background: var(--tg-theme-button-color, #3390ec);
   color: white;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
+  width: 100px;
   min-width: 100px;
   max-width: 100px;
-  width: 100px;
   text-align: center;
-  flex-shrink: 0;
-  flex-grow: 0;
-  align-self: flex-start;
   box-sizing: border-box;
   transition: all 0.2s ease;
   position: relative;
   z-index: 1;
+  flex-shrink: 0;
+  /* Гарантируем, что кнопка не выйдет за границы */
+  overflow: hidden;
 }
 
 .btn-details:hover {
