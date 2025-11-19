@@ -78,7 +78,7 @@
 }
 
 /* Модальное окно с подробной информацией - поверх результатов */
-.modal-overlay[style*="z-index: 2000"] {
+.modal-overlay-details {
   z-index: 2000 !important;
 }
 
