@@ -715,56 +715,56 @@ async def search_mappings(
         all_mappings = result.scalars().all()
         
         search_results = []
-    
-    for mapping in all_mappings:
-        scores = []
-        matched_fields = []
         
-        # Проверяем все поля (старые и новые)
-        fields_to_check = {
-            'code_1c': mapping.code_1c,
-            'bortlanger': mapping.bortlanger,
-            'epiroc': mapping.epiroc,
-            'almazgeobur': mapping.almazgeobur,
-            # Новые базовые поля
-            'article_bl': mapping.article_bl,
-            'article_agb': mapping.article_agb,
-            'variant_1': mapping.variant_1,
-            'variant_2': mapping.variant_2,
-            'variant_3': mapping.variant_3,
-            'variant_4': mapping.variant_4,
-            'variant_5': mapping.variant_5,
-            'variant_6': mapping.variant_6,
-            'variant_7': mapping.variant_7,
-            'variant_8': mapping.variant_8,
-            'unit': mapping.unit,
-            'code': mapping.code,
-            'nomenclature_agb': mapping.nomenclature_agb,
-            'packaging': mapping.packaging,
-        }
-        
-        # Проверяем конкурентов
-        if mapping.competitors:
-            for comp_name, comp_value in mapping.competitors.items():
-                if comp_value:
-                    fields_to_check[comp_name] = comp_value
-        
-        for field_name, field_value in fields_to_check.items():
-            if field_value:
-                score = calculate_similarity(query, str(field_value))
-                if score > 0:
-                    scores.append(score)
-                    if score >= min_score:
-                        matched_fields.append(field_name)
-        
-        if scores:
-            max_score = max(scores)
-            if max_score >= min_score:
-                search_results.append({
-                    'mapping': mapping,
-                    'match_score': round(max_score, 2),
-                    'matched_fields': matched_fields
-                })
+        for mapping in all_mappings:
+            scores = []
+            matched_fields = []
+            
+            # Проверяем все поля (старые и новые)
+            fields_to_check = {
+                'code_1c': mapping.code_1c,
+                'bortlanger': mapping.bortlanger,
+                'epiroc': mapping.epiroc,
+                'almazgeobur': mapping.almazgeobur,
+                # Новые базовые поля
+                'article_bl': mapping.article_bl,
+                'article_agb': mapping.article_agb,
+                'variant_1': mapping.variant_1,
+                'variant_2': mapping.variant_2,
+                'variant_3': mapping.variant_3,
+                'variant_4': mapping.variant_4,
+                'variant_5': mapping.variant_5,
+                'variant_6': mapping.variant_6,
+                'variant_7': mapping.variant_7,
+                'variant_8': mapping.variant_8,
+                'unit': mapping.unit,
+                'code': mapping.code,
+                'nomenclature_agb': mapping.nomenclature_agb,
+                'packaging': mapping.packaging,
+            }
+            
+            # Проверяем конкурентов
+            if mapping.competitors:
+                for comp_name, comp_value in mapping.competitors.items():
+                    if comp_value:
+                        fields_to_check[comp_name] = comp_value
+            
+            for field_name, field_value in fields_to_check.items():
+                if field_value:
+                    score = calculate_similarity(query, str(field_value))
+                    if score > 0:
+                        scores.append(score)
+                        if score >= min_score:
+                            matched_fields.append(field_name)
+            
+            if scores:
+                max_score = max(scores)
+                if max_score >= min_score:
+                    search_results.append({
+                        'mapping': mapping,
+                        'match_score': round(max_score, 2),
+                        'matched_fields': matched_fields
+                    })
     
         # Сортируем по проценту совпадения (по убыванию)
         search_results.sort(key=lambda x: x['match_score'], reverse=True)
