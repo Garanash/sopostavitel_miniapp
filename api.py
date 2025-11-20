@@ -1323,15 +1323,28 @@ async def export_recognition_results(session_id: str, background_tasks: Backgrou
             ]
             ws.append(row)
         
+        # Убеждаемся, что директория существует
+        os.makedirs(Config.TEMP_DIR, exist_ok=True)
+        
         # Сохраняем во временный файл
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx', dir=Config.TEMP_DIR)
         temp_file_path = temp_file.name
         temp_file.close()
         
-        # Убеждаемся, что директория существует
-        os.makedirs(Config.TEMP_DIR, exist_ok=True)
-        
-        wb.save(temp_file_path)
+        # Сохраняем книгу Excel
+        try:
+            wb.save(temp_file_path)
+            # Проверяем, что файл создан и не пустой
+            if not os.path.exists(temp_file_path) or os.path.getsize(temp_file_path) == 0:
+                raise Exception("Файл Excel не был создан или пуст")
+        except Exception as e:
+            # Удаляем временный файл при ошибке
+            if os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                except:
+                    pass
+            raise Exception(f"Ошибка при сохранении Excel файла: {str(e)}")
         
         # Используем FileResponse для отправки файла (проще и надежнее)
         # Добавляем задачу на удаление файла после отправки

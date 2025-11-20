@@ -272,14 +272,14 @@ function TablePage() {
           <button 
             className="btn-primary" 
             onClick={() => {
-              if (showAddForm && !editingId) {
-                setShowAddForm(false)
-                resetForm()
-              } else if (!showAddForm) {
-                setShowAddForm(true)
-                setEditingId(null)
-                resetForm()
-              }
+            if (showAddForm && !editingId) {
+              setShowAddForm(false)
+              resetForm()
+            } else if (!showAddForm) {
+              setShowAddForm(true)
+              setEditingId(null)
+              resetForm()
+            }
             }}
             aria-label={showAddForm && !editingId ? "Закрыть форму добавления" : "Добавить новую строку"}
           >

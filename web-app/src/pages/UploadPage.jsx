@@ -145,14 +145,42 @@ function UploadPage({ userId }) {
     }
 
     try {
+      // Показываем индикатор загрузки
+      const exportButton = document.querySelector('[aria-label="Выгрузить результаты в Excel"]')
+      if (exportButton) {
+        exportButton.disabled = true
+        exportButton.textContent = '⏳ Выгрузка...'
+      }
+
       const response = await axios.get(`/api/mappings/upload/export/${sessionId}`, {
         responseType: 'blob',
-        timeout: 60000
+        timeout: 120000,
+        headers: {
+          'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        }
       })
 
       // Проверяем, что ответ действительно Blob
       if (!(response.data instanceof Blob)) {
         throw new Error('Неверный формат ответа от сервера')
+      }
+
+      // Проверяем размер файла
+      if (response.data.size === 0) {
+        throw new Error('Получен пустой файл')
+      }
+
+      // Проверяем Content-Type
+      const contentType = response.headers['content-type'] || response.headers['Content-Type']
+      if (contentType && !contentType.includes('spreadsheetml')) {
+        // Если это не Excel, возможно это ошибка в JSON
+        const text = await response.data.text()
+        try {
+          const errorData = JSON.parse(text)
+          throw new Error(errorData.detail || 'Ошибка при формировании файла')
+        } catch {
+          throw new Error('Получен файл неверного формата')
+        }
       }
 
       // Создаем Blob с правильным MIME типом
@@ -170,15 +198,17 @@ function UploadPage({ userId }) {
       // Добавляем в DOM, кликаем и удаляем
       document.body.appendChild(link)
       
-      // Используем setTimeout для гарантии, что элемент добавлен
-      setTimeout(() => {
+      // Используем requestAnimationFrame для гарантии, что элемент добавлен
+      requestAnimationFrame(() => {
         link.click()
         // Удаляем элемент и освобождаем URL после небольшой задержки
         setTimeout(() => {
-          document.body.removeChild(link)
+          if (document.body.contains(link)) {
+            document.body.removeChild(link)
+          }
           window.URL.revokeObjectURL(url)
         }, 100)
-      }, 10)
+      })
     } catch (err) {
       let errorMessage = 'Ошибка при выгрузке файла'
       if (err.response?.data) {
@@ -204,6 +234,13 @@ function UploadPage({ userId }) {
         errorMessage = err.message
       }
       alert(`❌ ${errorMessage}`)
+    } finally {
+      // Восстанавливаем кнопку
+      const exportButton = document.querySelector('[aria-label="Выгрузить результаты в Excel"]')
+      if (exportButton) {
+        exportButton.disabled = false
+        exportButton.textContent = '📥 Выгрузить в Excel'
+      }
     }
   }
 
