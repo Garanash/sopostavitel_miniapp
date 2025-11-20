@@ -445,7 +445,13 @@ async def ai_analyze_excel_structure(file_path: str) -> Optional[Dict]:
 }}"""
 
         # Вызываем OpenAI API
-        client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
+        try:
+            client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
+        except TypeError:
+            # Для старых версий openai библиотеки
+            import openai as openai_module
+            client = openai_module.OpenAI(api_key=Config.OPENAI_API_KEY)
+        
         response = client.chat.completions.create(
             model=Config.OPENAI_MODEL,
             messages=[
@@ -574,7 +580,13 @@ async def ai_interpret_text(recognized_text: str, available_mappings: List[Produ
 }}"""
 
         # Вызываем OpenAI API
-        client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
+        try:
+            client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
+        except TypeError:
+            # Для старых версий openai библиотеки
+            import openai as openai_module
+            client = openai_module.OpenAI(api_key=Config.OPENAI_API_KEY)
+        
         response = client.chat.completions.create(
             model=Config.OPENAI_MODEL,
             messages=[
