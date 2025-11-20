@@ -1323,48 +1323,48 @@ async def export_recognition_results(session_id: str, background_tasks: Backgrou
             ]
             ws.append(row)
         
-        # Убеждаемся, что директория существует
-        os.makedirs(Config.TEMP_DIR, exist_ok=True)
-        
-        # Сохраняем во временный файл
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx', dir=Config.TEMP_DIR)
-        temp_file_path = temp_file.name
-        temp_file.close()
-        
-        # Сохраняем книгу Excel
+        # Сохраняем Excel файл в BytesIO для отправки через StreamingResponse
+        excel_buffer = BytesIO()
         try:
-            wb.save(temp_file_path)
-            # Проверяем, что файл создан и не пустой
-            if not os.path.exists(temp_file_path) or os.path.getsize(temp_file_path) == 0:
+            wb.save(excel_buffer)
+            excel_buffer.seek(0)  # Перемещаем указатель в начало
+            
+            # Проверяем, что файл не пустой
+            if excel_buffer.getvalue() == b'':
                 raise Exception("Файл Excel не был создан или пуст")
         except Exception as e:
-            # Удаляем временный файл при ошибке
-            if os.path.exists(temp_file_path):
-                try:
-                    os.unlink(temp_file_path)
-                except:
-                    pass
+            excel_buffer.close()
             raise Exception(f"Ошибка при сохранении Excel файла: {str(e)}")
         
-        # Используем FileResponse для отправки файла (проще и надежнее)
-        # Добавляем задачу на удаление файла после отправки
-        def cleanup_file():
+        # Используем StreamingResponse для более надежной отправки файла
+        from urllib.parse import quote
+        
+        # Кодируем имя файла для правильной передачи в заголовках
+        filename = f"results_{session_id}.xlsx"
+        encoded_filename = quote(filename, safe='')
+        
+        def generate():
             try:
-                if os.path.exists(temp_file_path):
-                    os.unlink(temp_file_path)
-            except Exception as e:
-                print(f"Ошибка при удалении временного файла: {e}")
+                # Читаем файл по частям
+                chunk_size = 8192
+                while True:
+                    chunk = excel_buffer.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+            finally:
+                excel_buffer.close()
         
-        background_tasks.add_task(cleanup_file)
-        
-        # Создаем FileResponse с правильными заголовками для скачивания
-        response = FileResponse(
-            temp_file_path,
+        # Создаем StreamingResponse с правильными заголовками
+        response = StreamingResponse(
+            generate(),
             media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            filename=f"results_{session_id}.xlsx",
             headers={
-                'Content-Disposition': f'attachment; filename="results_{session_id}.xlsx"',
-                'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                'Content-Disposition': f'attachment; filename="{filename}"; filename*=UTF-8\'\'{encoded_filename}',
+                'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
             }
         )
         return response
