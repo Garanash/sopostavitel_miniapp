@@ -257,11 +257,32 @@
   z-index: 5;
 }
 
+.recognition-results-table .actions-row {
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+}
+
+.recognition-results-table .actions-row.has-match {
+  background: rgba(51, 144, 236, 0.05);
+}
+
+.recognition-results-table .actions-row.no-match {
+  background: rgba(255, 0, 0, 0.02);
+}
+
+.recognition-results-table .actions-cell-full {
+  padding: 12px;
+  text-align: center;
+  border-top: none;
+  border-bottom: 1px solid var(--tg-theme-hint-color, #e0e0e0);
+}
+
 .actions-buttons-container {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: stretch;
+  flex-direction: row;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
   min-width: 90px;
 }
 
@@ -377,28 +398,22 @@
     font-size: 11px;
   }
 
-  .recognition-results-table .actions-cell {
-    min-width: 100px;
-    position: sticky;
-    right: 0;
-    background: var(--tg-theme-bg-color, #ffffff);
-    z-index: 5;
-    padding: 8px 4px;
+  .recognition-results-table .actions-cell-full {
+    padding: 12px 8px;
   }
-
-  .recognition-results-table .actions-cell > div {
-    display: flex;
+  
+  .actions-buttons-container {
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
     align-items: stretch;
   }
-
+  
   .recognition-results-table .btn-details,
   .recognition-results-table .btn-confirm {
     width: 100%;
     max-width: 100%;
-    padding: 8px 10px;
-    font-size: 11px;
+    padding: 10px 12px;
+    font-size: 14px;
     min-width: auto;
   }
 

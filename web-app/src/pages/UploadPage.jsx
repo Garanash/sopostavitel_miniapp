@@ -189,13 +189,18 @@ function UploadPage({ userId }) {
     // Не закрываем модальное окно с результатами
   }
 
-  const closeModal = () => {
+  const closeModal = (e) => {
+    // Предотвращаем закрытие основного модального окна с результатами
+    if (e && e.target === e.currentTarget) {
+      // Клик по overlay - закрываем только модальное окно с подробной информацией
+      setShowModal(false)
+      setSelectedMapping(null)
+      // НЕ закрываем основное модальное окно с результатами
+      return
+    }
     setShowModal(false)
     setSelectedMapping(null)
-    // Возвращаемся к таблице результатов
-    if (recognitionResults.length > 0) {
-      setShowRecognitionModal(true)
-    }
+    // Возвращаемся к таблице результатов - НЕ закрываем основное окно
   }
 
   const handleUploadConfirmations = async (event) => {
@@ -297,7 +302,12 @@ function UploadPage({ userId }) {
 
       {/* Модальное окно с результатами распознавания */}
       {showRecognitionModal && recognitionResults.length > 0 && (
-        <div className="modal-overlay" onClick={() => setShowRecognitionModal(false)}>
+        <div className="modal-overlay" onClick={(e) => {
+          // Закрываем только если клик по overlay, а не по содержимому
+          if (e.target === e.currentTarget && !showModal) {
+            setShowRecognitionModal(false)
+          }
+        }}>
           <div className="modal-content recognition-modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Результаты обработки файла ({recognitionResults.length})</h2>
@@ -351,7 +361,6 @@ function UploadPage({ userId }) {
                         <th>Что искалось</th>
                         <th>Что найдено</th>
                         <th>Совпадение</th>
-                        <th>Действия</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -370,54 +379,59 @@ function UploadPage({ userId }) {
                           : 'Не найдено'
                         
                         return (
-                          <tr key={idx} className={hasMatch ? 'has-match' : 'no-match'}>
-                            <td className="search-text">{result.recognized_text || '-'}</td>
-                            <td className="found-text">{foundText}</td>
-                            <td className="match-score-cell">
-                              {hasMatch ? (
-                                <span className={`match-score score-${Math.floor((result.match_score || 0) / 25)}`}>
-                                  {result.match_score.toFixed(1)}%
-                                </span>
-                              ) : (
-                                <span className="no-match-text">-</span>
-                              )}
-                            </td>
-                            <td className="actions-cell">
-                              {hasMatch && (
-                                <div className="actions-buttons-container">
-                                  <button
-                                    className="btn-details"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      // Не закрываем модальное окно с результатами, просто открываем подробную информацию поверх
-                                      openModal(result.mapping, result.match_score)
-                                    }}
-                                  >
-                                    Подробнее
-                                  </button>
-                                  <button
-                                    className={`btn-confirm ${result.is_confirmed ? 'confirmed' : ''}`}
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleConfirmMapping(result)
-                                    }}
-                                    disabled={confirmingIds.has(`${result.recognized_text}_${result.mapping_id}`) || result.is_confirmed}
-                                    style={{
-                                      background: result.is_confirmed 
-                                        ? 'var(--tg-theme-button-color, #3390ec)' 
-                                        : 'var(--tg-theme-secondary-bg-color, #f5f5f5)',
-                                      color: result.is_confirmed ? 'white' : 'var(--tg-theme-text-color, #000)',
-                                      border: result.is_confirmed ? 'none' : '1px solid var(--tg-theme-hint-color, #e0e0e0)',
-                                      cursor: result.is_confirmed ? 'default' : 'pointer',
-                                      opacity: confirmingIds.has(`${result.recognized_text}_${result.mapping_id}`) ? 0.6 : 1
-                                    }}
-                                  >
-                                    {result.is_confirmed ? '✓ Подтверждено' : '✓ Подтвердить'}
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
+                          <React.Fragment key={idx}>
+                            <tr className={hasMatch ? 'has-match' : 'no-match'}>
+                              <td className="search-text">{result.recognized_text || '-'}</td>
+                              <td className="found-text">{foundText}</td>
+                              <td className="match-score-cell">
+                                {hasMatch ? (
+                                  <span className={`match-score score-${Math.floor((result.match_score || 0) / 25)}`}>
+                                    {result.match_score.toFixed(1)}%
+                                  </span>
+                                ) : (
+                                  <span className="no-match-text">-</span>
+                                )}
+                              </td>
+                              {!hasMatch && <td className="actions-cell"></td>}
+                            </tr>
+                            {hasMatch && (
+                              <tr className={`actions-row ${hasMatch ? 'has-match' : 'no-match'}`}>
+                                <td colSpan="3" className="actions-cell-full">
+                                  <div className="actions-buttons-container">
+                                    <button
+                                      className="btn-details"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        // Не закрываем модальное окно с результатами, просто открываем подробную информацию поверх
+                                        openModal(result.mapping, result.match_score)
+                                      }}
+                                    >
+                                      Подробнее
+                                    </button>
+                                    <button
+                                      className={`btn-confirm ${result.is_confirmed ? 'confirmed' : ''}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleConfirmMapping(result)
+                                      }}
+                                      disabled={confirmingIds.has(`${result.recognized_text}_${result.mapping_id}`) || result.is_confirmed}
+                                      style={{
+                                        background: result.is_confirmed 
+                                          ? 'var(--tg-theme-button-color, #3390ec)' 
+                                          : 'var(--tg-theme-secondary-bg-color, #f5f5f5)',
+                                        color: result.is_confirmed ? 'white' : 'var(--tg-theme-text-color, #000)',
+                                        border: result.is_confirmed ? 'none' : '1px solid var(--tg-theme-hint-color, #e0e0e0)',
+                                        cursor: result.is_confirmed ? 'default' : 'pointer',
+                                        opacity: confirmingIds.has(`${result.recognized_text}_${result.mapping_id}`) ? 0.6 : 1
+                                      }}
+                                    >
+                                      {result.is_confirmed ? '✓ Подтверждено' : '✓ Подтвердить'}
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
                         )
                       })}
                     </tbody>
@@ -435,7 +449,7 @@ function UploadPage({ userId }) {
 
       {/* Модальное окно с подробной информацией - поверх модального окна с результатами */}
       {showModal && selectedMapping && (
-        <div className="modal-overlay modal-overlay-details" onClick={closeModal}>
+        <div className="modal-overlay modal-overlay-details" onClick={(e) => closeModal(e)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Подробная информация</h2>

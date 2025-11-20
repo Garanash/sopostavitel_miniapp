@@ -31,3 +31,4 @@ else
     ps aux | grep -E "[p]ython.*bot.py|[b]ot.py|[u]vicorn.*api|[a]pi:app" || true
 fi
 
+
