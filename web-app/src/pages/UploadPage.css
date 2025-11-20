@@ -182,12 +182,52 @@
   overflow-x: auto;
   margin: -20px;
   padding: 20px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Десктопная версия - улучшенная читаемость */
+@media (min-width: 769px) {
+  .recognition-results-table-container {
+    max-height: 70vh;
+  }
+
+  .recognition-results-table {
+    font-size: 15px;
+  }
+
+  .recognition-results-table th {
+    font-size: 15px;
+    padding: 16px 14px;
+  }
+
+  .recognition-results-table td {
+    padding: 16px 14px;
+  }
+
+  .recognition-results-table .search-text {
+    max-width: 350px;
+  }
+
+  .recognition-results-table .found-text {
+    max-width: 400px;
+  }
+
+  .actions-buttons-container {
+    gap: 16px;
+  }
+
+  .recognition-results-table .btn-details,
+  .recognition-results-table .btn-confirm {
+    min-width: 140px;
+    padding: 12px 24px;
+  }
 }
 
 .recognition-results-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+  table-layout: auto;
 }
 
 .recognition-results-table thead {
@@ -198,7 +238,7 @@
 }
 
 .recognition-results-table th {
-  padding: 12px;
+  padding: 14px 12px;
   text-align: left;
   font-weight: 600;
   font-size: 14px;
@@ -208,7 +248,7 @@
 }
 
 .recognition-results-table td {
-  padding: 12px;
+  padding: 14px 12px;
   border-bottom: 1px solid var(--tg-theme-hint-color, #e0e0e0);
   vertical-align: top;
 }
@@ -229,13 +269,17 @@
   font-weight: 500;
   color: var(--tg-theme-text-color, #000);
   word-break: break-word;
-  max-width: 200px;
+  line-height: 1.5;
+  min-width: 150px;
+  max-width: 300px;
 }
 
 .recognition-results-table .found-text {
   color: var(--tg-theme-text-color, #000);
   word-break: break-word;
-  max-width: 250px;
+  line-height: 1.5;
+  min-width: 150px;
+  max-width: 300px;
 }
 
 .recognition-results-table .no-match-text {
@@ -245,7 +289,9 @@
 
 .recognition-results-table .match-score-cell {
   text-align: center;
-  min-width: 80px;
+  min-width: 100px;
+  max-width: 120px;
+  white-space: nowrap;
 }
 
 .recognition-results-table .actions-cell {
@@ -272,8 +318,9 @@
 .recognition-results-table .actions-cell-full {
   padding: 12px;
   text-align: center;
-  border-top: none;
+  border-top: 1px solid var(--tg-theme-hint-color, #e0e0e0);
   border-bottom: 1px solid var(--tg-theme-hint-color, #e0e0e0);
+  background: var(--tg-theme-bg-color, #ffffff);
 }
 
 .actions-buttons-container {
@@ -284,6 +331,62 @@
   justify-content: center;
   flex-wrap: wrap;
   min-width: 90px;
+}
+
+.recognition-results-table .btn-details,
+.recognition-results-table .btn-confirm {
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  min-width: 120px;
+  border: none;
+}
+
+.recognition-results-table .btn-details {
+  background: var(--tg-theme-button-color, #3390ec);
+  color: white;
+}
+
+.recognition-results-table .btn-details:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(51, 144, 236, 0.3);
+}
+
+.recognition-results-table .btn-details:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.recognition-results-table .btn-confirm {
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+  color: var(--tg-theme-text-color, #000);
+  border: 1px solid var(--tg-theme-hint-color, #e0e0e0);
+}
+
+.recognition-results-table .btn-confirm:hover:not(:disabled) {
+  background: var(--tg-theme-hint-color, #e0e0e0);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.recognition-results-table .btn-confirm:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.recognition-results-table .btn-confirm.confirmed {
+  background: var(--tg-theme-button-color, #3390ec);
+  color: white;
+  border: none;
+}
+
+.recognition-results-table .btn-confirm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .recognition-results-list {
@@ -373,48 +476,61 @@
   }
 
   .recognition-results-table {
-    font-size: 12px;
-    min-width: 600px; /* Минимальная ширина для горизонтального скролла */
+    font-size: 13px;
+    width: 100%;
+    table-layout: auto;
   }
 
   .recognition-results-table th,
   .recognition-results-table td {
-    padding: 8px;
+    padding: 10px 8px;
+    font-size: 13px;
+  }
+
+  .recognition-results-table th {
     font-size: 12px;
+    padding: 10px 6px;
   }
 
   .recognition-results-table .search-text {
-    max-width: 150px;
-    font-size: 11px;
+    min-width: 120px;
+    max-width: 200px;
+    font-size: 13px;
+    line-height: 1.4;
   }
 
   .recognition-results-table .found-text {
-    max-width: 180px;
-    font-size: 11px;
+    min-width: 120px;
+    max-width: 200px;
+    font-size: 13px;
+    line-height: 1.4;
   }
 
   .recognition-results-table .match-score-cell {
-    min-width: 60px;
-    font-size: 11px;
+    min-width: 70px;
+    max-width: 90px;
+    font-size: 12px;
   }
 
   .recognition-results-table .actions-cell-full {
-    padding: 12px 8px;
+    padding: 10px 8px;
   }
   
   .actions-buttons-container {
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
     align-items: stretch;
+    width: 100%;
   }
   
   .recognition-results-table .btn-details,
   .recognition-results-table .btn-confirm {
     width: 100%;
     max-width: 100%;
-    padding: 10px 12px;
+    padding: 12px 16px;
     font-size: 14px;
     min-width: auto;
+    box-sizing: border-box;
   }
 
   .modal-close {

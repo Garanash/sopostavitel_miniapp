@@ -150,26 +150,50 @@ function UploadPage({ userId }) {
         timeout: 60000
       })
 
-      // response.data уже является Blob, не нужно создавать новый
-      const url = window.URL.createObjectURL(response.data)
+      // Проверяем, что ответ действительно Blob
+      if (!(response.data instanceof Blob)) {
+        throw new Error('Неверный формат ответа от сервера')
+      }
+
+      // Создаем Blob с правильным MIME типом
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+      
+      // Создаем URL для скачивания
+      const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.setAttribute('download', `results_${sessionId}.xlsx`)
+      link.download = `results_${sessionId}.xlsx`
+      link.style.display = 'none'
+      
+      // Добавляем в DOM, кликаем и удаляем
       document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
+      
+      // Используем setTimeout для гарантии, что элемент добавлен
+      setTimeout(() => {
+        link.click()
+        // Удаляем элемент и освобождаем URL после небольшой задержки
+        setTimeout(() => {
+          document.body.removeChild(link)
+          window.URL.revokeObjectURL(url)
+        }, 100)
+      }, 10)
     } catch (err) {
       let errorMessage = 'Ошибка при выгрузке файла'
       if (err.response?.data) {
         if (err.response.data instanceof Blob) {
           // Если ответ - Blob с ошибкой, пытаемся прочитать как текст
-          const text = await err.response.data.text()
           try {
-            const errorData = JSON.parse(text)
-            errorMessage = errorData.detail || errorMessage
-          } catch {
-            errorMessage = text || errorMessage
+            const text = await err.response.data.text()
+            try {
+              const errorData = JSON.parse(text)
+              errorMessage = errorData.detail || errorMessage
+            } catch {
+              errorMessage = text || errorMessage
+            }
+          } catch (e) {
+            errorMessage = 'Ошибка при чтении ответа сервера'
           }
         } else if (typeof err.response.data === 'object') {
           errorMessage = err.response.data.detail || err.response.data.message || errorMessage
