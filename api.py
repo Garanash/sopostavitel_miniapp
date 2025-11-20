@@ -1344,11 +1344,17 @@ async def export_recognition_results(session_id: str, background_tasks: Backgrou
         
         background_tasks.add_task(cleanup_file)
         
-        return FileResponse(
+        # Создаем FileResponse с правильными заголовками для скачивания
+        response = FileResponse(
             temp_file_path,
             media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            filename=f"results_{session_id}.xlsx"
+            filename=f"results_{session_id}.xlsx",
+            headers={
+                'Content-Disposition': f'attachment; filename="results_{session_id}.xlsx"',
+                'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            }
         )
+        return response
         
     except Exception as e:
         import traceback

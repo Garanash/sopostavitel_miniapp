@@ -115,44 +115,55 @@ function ArticleSearchPage() {
       {searchResults.length > 0 && (
         <div className="search-results">
           <h3>Найдено результатов: {searchResults.length}</h3>
-          <div className="results-list">
-            {searchResults.map((item) => {
-              const m = item.mapping
-              const matchScore = item.match_score !== null && item.match_score !== undefined ? item.match_score : null
-              
-              return (
-                <div key={m.id} className="result-item">
-                  <div className="result-item-content">
-                    <div className="result-item-main">
-                      <div className="result-article-agb">
-                        <span className="result-label">Артикул АГБ:</span>
-                        <span className="result-value">{m.article_agb || '-'}</span>
-                      </div>
-                      <div className="result-nomenclature-agb">
-                        <span className="result-label">Номенклатура АГБ:</span>
-                        <span className="result-value">{m.nomenclature_agb || '-'}</span>
-                      </div>
+          <div className="results-table-container">
+            <table className="results-table">
+              <thead>
+                <tr>
+                  <th>Артикул АГБ</th>
+                  <th>Номенклатура АГБ</th>
+                  <th>Совпадение</th>
+                </tr>
+              </thead>
+              <tbody>
+                {searchResults.map((item) => {
+                  const m = item.mapping
+                  const matchScore = item.match_score !== null && item.match_score !== undefined ? item.match_score : null
+                  
+                  return (
+                    <React.Fragment key={m.id}>
+                      <tr className={matchScore !== null ? 'has-match' : 'no-match'}>
+                        <td className="result-article-cell">{m.article_agb || '-'}</td>
+                        <td className="result-nomenclature-cell">{m.nomenclature_agb || '-'}</td>
+                        <td className="result-match-cell">
+                          {matchScore !== null ? (
+                            <span className={`match-score score-${Math.floor(matchScore / 25)}`}>
+                              {matchScore.toFixed(1)}%
+                            </span>
+                          ) : (
+                            <span className="no-match-text">-</span>
+                          )}
+                        </td>
+                      </tr>
                       {matchScore !== null && (
-                        <div className="result-match-score">
-                          <span className="result-label">Совпадение:</span>
-                          <span className={`match-score score-${Math.floor(matchScore / 25)}`}>
-                            {matchScore.toFixed(1)}%
-                          </span>
-                        </div>
+                        <tr className="actions-row">
+                          <td colSpan="3" className="actions-cell-full">
+                            <div className="actions-buttons-container">
+                              <button
+                                className="btn-details"
+                                onClick={() => openModal(m, matchScore)}
+                                aria-label={`Подробная информация о ${m.article_agb || m.article_bl || 'записи'}`}
+                              >
+                                Подробнее
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </div>
-                    <button
-                      className="btn-details"
-                      onClick={() => openModal(m, matchScore)}
-                      aria-label={`Подробная информация о ${m.article_agb || m.article_bl || 'записи'}`}
-                      title="Подробнее"
-                    >
-                      ⋯
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
+                    </React.Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

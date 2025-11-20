@@ -214,12 +214,19 @@
 
   .actions-buttons-container {
     gap: 16px;
+    width: 100%;
   }
 
   .recognition-results-table .btn-details,
   .recognition-results-table .btn-confirm {
     min-width: 140px;
     padding: 12px 24px;
+    flex: 1;
+    width: 100%;
+    max-width: 100%;
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
 }
 
@@ -330,6 +337,7 @@
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
+  width: 100%;
   min-width: 90px;
 }
 
@@ -341,9 +349,14 @@
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
-  white-space: nowrap;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
   min-width: 120px;
+  max-width: 100%;
+  flex: 1;
   border: none;
+  box-sizing: border-box;
 }
 
 .recognition-results-table .btn-details {
@@ -531,6 +544,9 @@
     font-size: 14px;
     min-width: auto;
     box-sizing: border-box;
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
 
   .modal-close {
