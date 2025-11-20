@@ -475,16 +475,16 @@ async def ai_analyze_excel_structure(file_path: str) -> Optional[Dict]:
         return None
 
 async def ai_interpret_text(recognized_text: str, available_mappings: List[ProductMapping], db: AsyncSession) -> Optional[Dict]:
-    """Использует AI для интерпретации распознанного текста и поиска в БД"""
+    """Использует AI для интерпретации распознанного текста и поиска в БД с дообучением на подтвержденных примерах"""
     if not Config.OPENAI_API_KEY:
         return None  # Если нет API ключа, возвращаем None
     
     try:
-        # Сначала проверяем подтвержденные сопоставления
+        # Проверяем точное совпадение с подтвержденными сопоставлениями (быстрая проверка)
         confirmed_result = await db.execute(
             select(ConfirmedMapping).where(
                 ConfirmedMapping.recognized_text.ilike(f"%{recognized_text}%")
-            )
+            ).order_by(ConfirmedMapping.user_confirmed.desc(), ConfirmedMapping.updated_at.desc()).limit(1)
         )
         confirmed = confirmed_result.scalar_one_or_none()
         if confirmed:
@@ -494,64 +494,95 @@ async def ai_interpret_text(recognized_text: str, available_mappings: List[Produ
             )
             mapping = mapping_result.scalar_one_or_none()
             if mapping:
-                return {
-                    'mapping_id': mapping.id,
-                    'match_score': 100.0,  # Подтвержденные сопоставления имеют 100%
-                    'is_confirmed': True,
-                    'mapping': mapping
-                }
+                # Если есть точное совпадение, возвращаем сразу
+                if recognized_text.strip().lower() == confirmed.recognized_text.strip().lower():
+                    return {
+                        'mapping_id': mapping.id,
+                        'match_score': 100.0,  # Подтвержденные сопоставления имеют 100%
+                        'is_confirmed': True,
+                        'mapping': mapping
+                    }
         
-        # Подготавливаем данные для AI (первые 30 записей для экономии токенов)
+        # Получаем примеры подтвержденных сопоставлений для дообучения (few-shot learning)
+        confirmed_examples_result = await db.execute(
+            select(ConfirmedMapping, ProductMapping)
+            .join(ProductMapping, ConfirmedMapping.mapping_id == ProductMapping.id)
+            .order_by(ConfirmedMapping.user_confirmed.desc(), ConfirmedMapping.updated_at.desc())
+            .limit(5)  # Берем 5 последних подтвержденных примеров
+        )
+        confirmed_examples = confirmed_examples_result.all()
+        
+        # Подготавливаем примеры для промпта
+        learning_examples = []
+        for confirmed_mapping, product_mapping in confirmed_examples:
+            learning_examples.append({
+                'запрос': confirmed_mapping.recognized_text,
+                'результат': {
+                    'id': product_mapping.id,
+                    'артикул_АГБ': product_mapping.article_agb or '',
+                    'номенклатура_АГБ': product_mapping.nomenclature_agb or '',
+                    'артикул_BL': product_mapping.article_bl or '',
+                    'код': product_mapping.code or '',
+                }
+            })
+        
+        # Подготавливаем данные базы для поиска (увеличиваем до 50 записей для лучшего поиска)
         # Приоритет записям с артикулом АГБ
-        mappings_with_agb = [m for m in available_mappings if m.article_agb][:30]
+        mappings_with_agb = [m for m in available_mappings if m.article_agb][:50]
         if not mappings_with_agb:
-            mappings_with_agb = available_mappings[:30]
+            mappings_with_agb = available_mappings[:50]
         
         sample_data = []
         for m in mappings_with_agb:
             sample_data.append({
                 'id': m.id,
-                'article_agb': m.article_agb or '',
-                'nomenclature_agb': m.nomenclature_agb or '',
-                'code': m.code or '',
-                'variant_1': m.variant_1 or '',
-                'variant_2': m.variant_2 or '',
+                'артикул_АГБ': m.article_agb or '',
+                'артикул_BL': m.article_bl or '',
+                'номенклатура_АГБ': m.nomenclature_agb or '',
+                'код': m.code or '',
+                'вариант_1': m.variant_1 or '',
+                'вариант_2': m.variant_2 or '',
+                'вариант_3': m.variant_3 or '',
             })
         
-        # Формируем промпт для AI
-        prompt = f"""Ты помощник для поиска соответствий в базе данных товаров.
+        # Формируем промпт для AI с новым форматом
+        examples_text = ""
+        if learning_examples:
+            examples_text = f"\n\nПримеры правильных сопоставлений (используй их как образец):\n{json.dumps(learning_examples, ensure_ascii=False, indent=2)}"
+        
+        prompt = f"""Мне пришел запрос на: "{recognized_text}"
 
-Распознанный текст из файла: "{recognized_text}"
+Подбери из нашей базы данных максимально подходящий вариант. База данных содержит {len(available_mappings)} записей.
 
-Доступные записи в базе данных (примеры, всего записей в БД: {len(available_mappings)}):
-{json.dumps(sample_data, ensure_ascii=False, indent=2)}
+Доступные варианты в базе данных:
+{json.dumps(sample_data, ensure_ascii=False, indent=2)}{examples_text}
 
-Задача: найди наиболее подходящую запись из базы данных для распознанного текста.
-Учитывай возможные опечатки, сокращения и вариации написания.
+Задача: найди ОДИН наиболее подходящий вариант из базы данных для запроса "{recognized_text}".
+Учитывай возможные опечатки, сокращения, вариации написания и синонимы.
 Ищи совпадения по артикулам, кодам, номенклатуре и вариантам подбора.
 
-ВАЖНО: Если в базе данных есть запись с точно таким же текстом или очень похожим (более 80% совпадения), верни её ID.
-Если не уверен (менее 50% совпадения), верни mapping_id: null.
+ВАЖНО: 
+- Верни ТОЛЬКО ОДИН результат (самый подходящий)
+- Если уверенность менее 50%, верни mapping_id: null
+- Используй примеры правильных сопоставлений выше как образец для понимания логики
 
 Ответь ТОЛЬКО в формате JSON:
 {{
     "mapping_id": <id записи из базы или null>,
     "confidence": <0-100, процент уверенности>,
-    "reasoning": "<краткое объяснение почему выбрана эта запись>"
-}}
-
-Если не нашел подходящей записи, верни mapping_id: null."""
+    "reasoning": "<краткое объяснение почему выбран именно этот вариант>"
+}}"""
 
         # Вызываем OpenAI API
         client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
         response = client.chat.completions.create(
             model=Config.OPENAI_MODEL,
             messages=[
-                {"role": "system", "content": "Ты помощник для поиска соответствий в базе данных. Отвечай только в формате JSON."},
+                {"role": "system", "content": "Ты помощник для поиска соответствий в базе данных товаров. Твоя задача - подобрать ОДИН максимально подходящий вариант из базы данных для каждого запроса. Отвечай только в формате JSON."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3,  # Низкая температура для более точных результатов
-            max_tokens=200
+            temperature=0.2,  # Низкая температура для более точных и стабильных результатов
+            max_tokens=300
         )
         
         ai_response = response.choices[0].message.content.strip()
@@ -567,7 +598,7 @@ async def ai_interpret_text(recognized_text: str, available_mappings: List[Produ
             
             ai_result = json.loads(ai_response)
             
-            if ai_result.get('mapping_id') and ai_result.get('confidence', 0) > 50:
+            if ai_result.get('mapping_id') and ai_result.get('confidence', 0) >= 50:
                 # Находим mapping по ID
                 mapping_result = await db.execute(
                     select(ProductMapping).where(ProductMapping.id == ai_result['mapping_id'])
@@ -581,12 +612,15 @@ async def ai_interpret_text(recognized_text: str, available_mappings: List[Produ
                         'reasoning': ai_result.get('reasoning', ''),
                         'mapping': mapping
                     }
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            print(f"Ошибка парсинга ответа AI: {e}, ответ: {ai_response}")
             pass  # Если не удалось распарсить, возвращаем None
         
         return None
     except Exception as e:
         print(f"Ошибка AI-поиска: {e}")
+        import traceback
+        traceback.print_exc()
         return None  # В случае ошибки возвращаем None, будет использован обычный поиск
 
 def calculate_similarity(text1: str, text2: str) -> float:
@@ -1076,7 +1110,7 @@ async def upload_mapping_file(
                 best_match = None
                 best_score = 0.0
                 
-                # Сначала пробуем AI-поиск
+                # ВСЕГДА пробуем AI-поиск для каждой строки (дообучение в процессе работы)
                 ai_match = await ai_interpret_text(line, all_mappings, db)
                 if ai_match and ai_match.get('match_score', 0) > best_score:
                     best_score = ai_match['match_score']
@@ -1108,8 +1142,8 @@ async def upload_mapping_file(
                         }
                     }
                 
-                # Если AI не нашел или результат слабый, используем обычный поиск
-                if not best_match or best_score < 80:
+                # Если AI не нашел или результат слабый (менее 50%), используем обычный поиск как fallback
+                if not best_match or best_score < 50:
                     # Ищем совпадения во всех полях таблицы
                     for mapping in all_mappings:
                         # Проверяем все поля
